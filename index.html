@@ -121,6 +121,15 @@
   .check-item.fatal .weight-tag { background: var(--danger-dim); color: var(--danger); }
   .check-item.selected .weight-tag { background: var(--accent-dim); color: var(--accent); }
 
+
+  .hand-count-btn {
+    padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border2);
+    background: transparent; color: var(--muted); font-size: 12px; font-family: var(--sans);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .hand-count-btn:hover { border-color: var(--accent); color: var(--text); }
+  .hand-count-btn.active { background: var(--danger-dim); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+  .hand-count-btn[data-val="0"].active { background: var(--surface2); border-color: var(--border2); color: var(--muted); }
   .analyze-btn {
     width: 100%; margin-top: 16px; padding: 13px;
     background: var(--accent); color: #0d0f12;
@@ -389,10 +398,20 @@
     <div class="config-panel" id="configPanel">
       <h3>第二关：AI手部质检项目</h3>
       <p class="sub">标红项为一票否决项（任何一帧违规 → 直接不合格），其余按权重扣分</p>
+      <!-- 最少手数选择器 -->
+      <div style="margin-bottom:12px;padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border2)">
+        <div style="font-size:12px;font-weight:500;color:var(--text);margin-bottom:10px">✋ 最少可见手数要求（一票否决）</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="hand-count-btn" data-val="0" onclick="setMinHands(0)">不限制</button>
+          <button class="hand-count-btn" data-val="1" onclick="setMinHands(1)">≥ 1只手</button>
+          <button class="hand-count-btn active" data-val="2" onclick="setMinHands(2)">≥ 2只手（默认）</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px" id="handCountDesc">单手操作任务选"≥1只手"，双手协作任务选"≥2只手"</div>
+      </div>
       <div class="check-grid">
-        <div class="check-item fatal">
-          <div class="check-name">✋ 少于2只手可见<span class="weight-tag">一票否决</span></div>
-          <div class="check-desc">操作手必须始终在画面内，任何帧缺失即不合格</div>
+        <div class="check-item fatal" id="noHandsItem" style="display:none">
+          <div class="check-name">✋ 少于2只手可见<span class="weight-tag" id="noHandsTag">一票否决</span></div>
+          <div class="check-desc" id="noHandsDesc">操作手必须始终在画面内，任何帧缺失即不合格</div>
         </div>
         <div class="check-item fatal">
           <div class="check-name">👤 出现人脸（PII）<span class="weight-tag">一票否决</span></div>
@@ -440,8 +459,11 @@
 </div>
 
 <div class="view" id="view-history">
-  <h1>上传历史</h1>
-  <p class="page-sub">所有提交记录，点击行跳转到分析报告</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <h1>上传历史</h1>
+    <button onclick="clearHistory()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:12px;cursor:pointer;font-family:var(--sans)">清空历史</button>
+  </div>
+  <p class="page-sub">所有提交记录，点击行查看完整报告和视频</p>
   <table class="history-table">
     <thead>
       <tr>
@@ -523,6 +545,29 @@ function runSpecCheck(file){
 
 function fmtSec(s){s=Math.round(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
 
+// ── 最少手数配置 ──
+let minHands = 2;
+function setMinHands(val) {
+  minHands = val;
+  document.querySelectorAll('.hand-count-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.val) === val));
+  const item = document.getElementById('noHandsItem');
+  const desc = document.getElementById('handCountDesc');
+  if (val === 0) {
+    item.style.display = 'none';
+    desc.textContent = '不检测手数，任意帧均可通过';
+  } else if (val === 1) {
+    item.style.display = '';
+    document.getElementById('noHandsTag').textContent = '一票否决';
+    document.getElementById('noHandsDesc').textContent = '至少1只手必须在画面内，适合单手操作任务';
+    desc.textContent = '单手任务：抓取、移动、按压等只需一只手的操作';
+  } else {
+    item.style.display = '';
+    document.getElementById('noHandsTag').textContent = '一票否决';
+    document.getElementById('noHandsDesc').textContent = '双手必须始终在画面内，适合双手协作任务';
+    desc.textContent = '双手任务：装配、拧螺丝、需要两手配合的操作';
+  }
+}
+
 // ── 修复：MODAL_API 指向 /analyze，已移除 OPTIONS 预热请求 ──
 const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run/analyze';
 
@@ -575,13 +620,22 @@ loadHistory();
 
 function addToHistory(v,init){
   historyRows.unshift(v);
+  // videos 保留带 videoFile 的版本（本次会话）
+  if(!videos.find(x=>x.id===v.id)) videos.unshift(v);
   try{const ts=historyRows.map(h=>({...h,videoFile:null,videoUrl:null,debugFrames:[]}));localStorage.setItem('vidscore_history',JSON.stringify(ts.slice(0,100)));}catch(e){}
   if(!init)renderHistory();
 }
 
+function clearHistory(){
+  if(!confirm('确定清空所有历史记录？'))return;
+  historyRows.length=0;
+  try{localStorage.removeItem('vidscore_history');}catch(e){}
+  renderHistory();
+}
+
 function renderHistory(){
   document.getElementById('historyBody').innerHTML=historyRows.map(v=>`
-    <tr onclick="showView('feedback');setTimeout(()=>{selectVideo(historyRows.find(x=>x.id===${v.id}))},50)">
+    <tr onclick="showView('feedback');setTimeout(()=>{const vd=videos.find(x=>x.id===${v.id})||historyRows.find(x=>x.id===${v.id});selectVideo(vd);},50)" style="cursor:pointer">
       <td style="font-weight:500">${v.name}</td><td>${v.date}</td><td>${v.duration}</td>
       <td style="color:${v.spec.ok?'var(--accent)':'var(--danger)'}">${v.spec.res||'—'}</td>
       <td style="color:${scoreColor(v.score)};font-weight:600">${v.rejected?'拒绝':v.score}</td>
@@ -612,16 +666,22 @@ function showView(name){
 
 function renderVideoList(){
   const list=document.getElementById('videoList'),header=list.querySelector('.list-header').outerHTML;
-  const total=videos.length,failed=videos.filter(v=>v.rejected||v.score<70).length;
-  list.innerHTML=header+videos.map(v=>{
-    const fi=v.issues.filter(i=>i.fatal);
-    const tagHtml=[...fi.map(i=>`<span class="vc-tag fatal">${i.name}</span>`),...(v.spec&&!v.spec.ok?['<span class="vc-tag fatal">规格不合格</span>']:[])].slice(0,2).join('');
-    return `<div class="video-card ${selectedVideo&&selectedVideo.id===v.id?'active':''}" onclick="selectVideo(historyRows.find(x=>x.id===${v.id}))">
-      <div class="vc-name">${v.name}</div><div class="vc-meta">${v.date} · ${v.duration}</div>
-      ${tagHtml?`<div class="vc-tags">${tagHtml}</div>`:''}
-      <div class="score-badge ${v.rejected?'reject':scoreClass(v.score)}">${v.rejected?'✗':v.score}</div>
-    </div>`;
-  }).join('');
+  // 左侧列表显示所有历史（含本次会话 + localStorage 加载的）
+  const allVids=historyRows;
+  const total=allVids.length,failed=allVids.filter(v=>v.rejected||v.score<70).length;
+  list.innerHTML=header+(allVids.length===0
+    ? '<div class="empty-state" style="padding:40px;font-size:13px">暂无记录，请先上传视频</div>'
+    : allVids.map(v=>{
+        const fi=(v.issues||[]).filter(i=>i.fatal);
+        const tagHtml=[...fi.map(i=>`<span class="vc-tag fatal">${i.name}</span>`),...(v.spec&&!v.spec.ok?['<span class="vc-tag fatal">规格不合格</span>']:[])].slice(0,2).join('');
+        const hasFile=videos.find(x=>x.id===v.id)?.videoFile;
+        return `<div class="video-card ${selectedVideo&&selectedVideo.id===v.id?'active':''}" onclick="selectVideo(videos.find(x=>x.id===${v.id})||historyRows.find(x=>x.id===${v.id}))">
+          <div class="vc-name">${v.name}</div>
+          <div class="vc-meta">${v.date} · ${v.duration}${hasFile?' · 📹':''}</div>
+          ${tagHtml?`<div class="vc-tags">${tagHtml}</div>`:''}
+          <div class="score-badge ${v.rejected?'reject':scoreClass(v.score)}">${v.rejected?'✗':v.score}</div>
+        </div>`;
+      }).join(''));
   document.getElementById('listSubtitle').textContent=`共${total}个，${failed}个不合格`;
 }
 
