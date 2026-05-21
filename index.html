@@ -284,6 +284,42 @@
   .chip.ok { background: var(--accent-dim); color: var(--accent); }
   .empty-state { text-align: center; padding: 80px; color: var(--muted); font-size: 14px; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  @media (max-width: 768px) {
+    .sidebar {
+      width: 100%; height: auto; position: relative;
+      flex-direction: row; flex-wrap: wrap;
+      padding: 12px 0 0; border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { padding: 0 16px 4px; font-size: 16px; }
+    .logo-sub { display: none; }
+    .nav-label { display: none; }
+    .sidebar-footer { display: none; }
+    .nav-item {
+      padding: 8px 14px; font-size: 12px; border-left: none;
+      border-bottom: 2px solid transparent; flex: 1; justify-content: center;
+    }
+    .nav-item.active { border-bottom-color: var(--accent); border-left: none; }
+    .main { margin-left: 0; flex-direction: column; }
+    body { flex-direction: column; }
+
+    #view-upload { padding: 24px 16px; }
+    .upload-header h1 { font-size: 20px; }
+    .drop-zone { padding: 32px 20px; }
+    .check-grid { grid-template-columns: 1fr; }
+    .spec-panel, .config-panel { padding: 16px; }
+
+    #view-feedback { flex-direction: column; height: auto; min-height: 100vh; }
+    .video-list { width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding: 16px 0; max-height: 280px; overflow-y: auto; }
+    .detail-panel { padding: 20px 16px; }
+    .score-summary { grid-template-columns: 1fr 1fr; }
+    .spec-grid { grid-template-columns: 1fr 1fr; }
+
+    #view-history { padding: 20px 12px; overflow-x: auto; }
+    .history-table { min-width: 600px; }
+    .score-badge { width: 26px; height: 26px; font-size: 10px; }
+  }
 </style>
 </head>
 <body>
@@ -429,43 +465,7 @@ const CHECK_DEFS = [
   { id: 'low_conf',    name: '手部置信度低',    severity: 'info',   weight: 0.15, fatal: false },
 ];
 
-let videos = [
-  { id:1, name:'171208.mp4', date:'May 19, 05:17 PM', duration:'7:25', totalDuration:445,
-    spec:{res:'1080p',fps:'30fps',ok:true}, rejected:false, score:35,
-    issues:[
-      {id:'no_hands', name:'少于2只手可见', severity:'danger', fatal:true,  duration:'80.6s', segments:[[5,30],[45,80],[120,180],[240,310],[380,420]]},
-      {id:'hand_fast',name:'手部移动过快',  severity:'warn',  fatal:false, duration:'2.3s',  segments:[[95,97],[200,202]]},
-      {id:'cam_fast', name:'摄像头移动过快',severity:'warn',  fatal:false, duration:'1.2s',  segments:[[150,151]]},
-      {id:'low_conf', name:'手部置信度低',  severity:'info',  fatal:false, duration:'5.4s',  segments:[[320,325]]},
-    ], totalDrop:84.8,
-    aiSummary:'该视频存在<strong>严重的手部可见性问题</strong>（致命项），共80.6秒手部不在画面内，直接触发不合格。建议重拍时在开机前先确认头戴摄像机角度，确保双手始终位于画面下三分之一区域。手速也需放慢，在抓取/放下零件时保持0.3–0.5秒停顿。',
-    videoUrl:null },
-  { id:2, name:'10000700001_GX013498.MP4', date:'May 15, 01:23 AM', duration:'7:46', totalDuration:466,
-    spec:{res:'1080p',fps:'30fps',ok:true}, rejected:false, score:43,
-    issues:[
-      {id:'extra_hands',name:'超过2只手可见', severity:'warn',fatal:false,duration:'3.5s', segments:[[60,63],[340,341]]},
-      {id:'hand_fast',  name:'手部移动过快',  severity:'warn',fatal:false,duration:'10.8s',segments:[[130,138],[220,225]]},
-      {id:'cam_fast',   name:'摄像头移动过快',severity:'warn',fatal:false,duration:'23.5s',segments:[[10,20],[180,200],[400,413]]},
-      {id:'low_conf',   name:'手部置信度低',  severity:'info',fatal:false,duration:'2.3s', segments:[[90,92]]},
-    ], totalDrop:40.1,
-    aiSummary:'视频规格合格，无致命问题，但<strong>摄像头移动过多</strong>（23.5秒），操作员多次走动，影响手部追踪稳定性。手速在第2:10和3:40时段过快，会导致运动模糊。建议固定站位，完成一个子任务后再移步。',
-    videoUrl:null },
-  { id:3, name:'10000500001_GX015877.MP4', date:'May 15, 01:17 AM', duration:'5:35', totalDuration:335,
-    spec:{res:'1080p',fps:'30fps',ok:true}, rejected:true, score:0,
-    issues:[
-      {id:'no_hands',   name:'少于2只手可见', severity:'danger',fatal:true, duration:'120.4s',segments:[[0,60],[90,180],[210,280]]},
-      {id:'face',       name:'出现人脸（PII）',severity:'danger',fatal:true, duration:'4.0s',  segments:[[85,89]]},
-      {id:'extra_hands',name:'超过2只手可见', severity:'warn',  fatal:false,duration:'0.7s',  segments:[[85,86]]},
-      {id:'cam_fast',   name:'摄像头移动过快',severity:'warn',  fatal:false,duration:'1.2s',  segments:[[188,189]]},
-    ], totalDrop:126.3,
-    aiSummary:'该视频触发<strong>两项一票否决规则</strong>：① 120.4秒手部不在画面（占总时长36%）② 第1:25时刻出现人脸（隐私违规）。两项任一均导致整段视频直接丢弃，必须完整重拍。重拍前请检查头戴相机角度，并确认拍摄区域内无其他人员。',
-    videoUrl:null },
-  { id:4, name:'135552.mp4', date:'May 19, 02:21 PM', duration:'2:25', totalDuration:145,
-    spec:{res:'720p',fps:'30fps',ok:false,failReason:'分辨率不足（720p < 1080p），直接拒绝'},
-    rejected:true, score:0, issues:[], totalDrop:145,
-    aiSummary:'视频<strong>规格不达标</strong>，分辨率仅720p，未达到1080p要求，无需进行AI分析，直接拒绝提交。请使用GoPro HERO13 Black或同等设备，设置为1920×1080 / 30fps录制。',
-    videoUrl:null },
-];
+let videos = [];
 
 let selectedVideo=null, uploadedFile=null, currentVideoUrl=null, specCheckPassed=false;
 
@@ -571,7 +571,7 @@ async function startAnalysis(){
 const historyRows=[];
 function loadHistory(){try{const s=localStorage.getItem('vidscore_history');if(s)JSON.parse(s).forEach(v=>historyRows.push(v));}catch(e){}}
 loadHistory();
-if(historyRows.length===0)videos.forEach(v=>historyRows.push(v));
+
 
 function addToHistory(v,init){
   historyRows.unshift(v);
@@ -581,7 +581,7 @@ function addToHistory(v,init){
 
 function renderHistory(){
   document.getElementById('historyBody').innerHTML=historyRows.map(v=>`
-    <tr onclick="showView('feedback');setTimeout(()=>{selectVideo(videos.find(x=>x.id===${v.id}))},50)">
+    <tr onclick="showView('feedback');setTimeout(()=>{selectVideo(historyRows.find(x=>x.id===${v.id}))},50)">
       <td style="font-weight:500">${v.name}</td><td>${v.date}</td><td>${v.duration}</td>
       <td style="color:${v.spec.ok?'var(--accent)':'var(--danger)'}">${v.spec.res||'—'}</td>
       <td style="color:${scoreColor(v.score)};font-weight:600">${v.rejected?'拒绝':v.score}</td>
@@ -616,7 +616,7 @@ function renderVideoList(){
   list.innerHTML=header+videos.map(v=>{
     const fi=v.issues.filter(i=>i.fatal);
     const tagHtml=[...fi.map(i=>`<span class="vc-tag fatal">${i.name}</span>`),...(v.spec&&!v.spec.ok?['<span class="vc-tag fatal">规格不合格</span>']:[])].slice(0,2).join('');
-    return `<div class="video-card ${selectedVideo&&selectedVideo.id===v.id?'active':''}" onclick="selectVideo(videos.find(x=>x.id===${v.id}))">
+    return `<div class="video-card ${selectedVideo&&selectedVideo.id===v.id?'active':''}" onclick="selectVideo(historyRows.find(x=>x.id===${v.id}))">
       <div class="vc-name">${v.name}</div><div class="vc-meta">${v.date} · ${v.duration}</div>
       ${tagHtml?`<div class="vc-tags">${tagHtml}</div>`:''}
       <div class="score-badge ${v.rejected?'reject':scoreClass(v.score)}">${v.rejected?'✗':v.score}</div>
@@ -715,7 +715,6 @@ function setSpeed(s){
 }
 
 renderVideoList();
-selectVideo(videos[2]);
 showView('feedback');
 </script>
 </body>
