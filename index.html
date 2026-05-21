@@ -662,7 +662,7 @@ function fmtSec(s) {
 // ─────────────────────────────────────────────
 // 真实AI分析（Modal + MediaPipe）
 // ─────────────────────────────────────────────
-const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run';
+const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run/analyze';
   async function startAnalysis() {
     // 预热CORS
   try { await fetch(MODAL_API, {method:'OPTIONS'}); } catch(e) {}
