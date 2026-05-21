@@ -586,9 +586,23 @@ async function startAnalysis(){
     if(stepIdx<steps.length){const[p,label]=steps[stepIdx++];bar.style.width=p+'%';pct.textContent=p+'%';sub.textContent=label;}
   },2200);
   try{
-    const formData=new FormData();
-    formData.append('file',uploadedFile,uploadedFile.name);
-    const resp=await fetch(MODAL_API,{method:'POST',body:formData,redirect:'follow'});
+    // 转 base64 用 JSON 发送，避免 multipart 触发 303
+    sub.textContent='正在读取视频文件…';
+    const arrayBuffer = await uploadedFile.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < uint8.length; i += chunk) {
+      binary += String.fromCharCode(...uint8.subarray(i, i + chunk));
+    }
+    const b64 = btoa(binary);
+    sub.textContent='上传中…';
+    const resp = await fetch(MODAL_API, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filename: uploadedFile.name, data: b64, min_hands: minHands}),
+      redirect: 'follow',
+    });
     clearInterval(fakeTimer);
     if(!resp.ok)throw new Error('服务器返回错误：'+resp.status);
     const result=await resp.json();
