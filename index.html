@@ -662,9 +662,8 @@ function fmtSec(s) {
 // ─────────────────────────────────────────────
 // 真实AI分析（Modal + MediaPipe）
 // ─────────────────────────────────────────────
-const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run';
-
-async function startAnalysis() {
+const MODAL_API = '/api/analyze';
+  async function startAnalysis() {
   if (!specCheckPassed) return;
   document.getElementById('configPanel').style.display = 'none';
   document.getElementById('specPanel').style.display = 'none';
