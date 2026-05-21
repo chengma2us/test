@@ -662,9 +662,11 @@ function fmtSec(s) {
 // ─────────────────────────────────────────────
 // 真实AI分析（Modal + MediaPipe）
 // ─────────────────────────────────────────────
-const MODAL_API = '/api/analyze';
+const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run';
   async function startAnalysis() {
-  if (!specCheckPassed) return;
+    // 预热CORS
+  try { await fetch(MODAL_API, {method:'OPTIONS'}); } catch(e) {}
+    if (!specCheckPassed) return;
   document.getElementById('configPanel').style.display = 'none';
   document.getElementById('specPanel').style.display = 'none';
   const pw = document.getElementById('progressWrap');
