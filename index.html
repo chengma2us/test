@@ -928,17 +928,44 @@ function showView(name){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelectorAll('.nav-item')[{upload:0,feedback:1,history:2}[name]].classList.add('active');
   if(name==='upload'){
-    document.getElementById('configPanel').style.display='';document.getElementById('specPanel').style.display='';
-    document.getElementById('progressWrap').classList.remove('active');document.getElementById('specFailBanner').classList.remove('active');
+    document.getElementById('configPanel').style.display='';
+    document.getElementById('specPanel').style.display='';
+    document.getElementById('specFailBanner').classList.remove('active');
+
+    if(isProcessing) {
+      // 正在分析：恢复进度条显示，不清空队列
+      document.getElementById('progressWrap').classList.add('active');
+      document.getElementById('queuePanel').style.display='';
+      renderQueueList();
+      // 按钮显示当前状态
+      document.getElementById('analyzeBtn').disabled=true;
+      document.getElementById('analyzeBtn').textContent='分析进行中…';
+    } else if(uploadQueue.length > 0) {
+      // 有队列但未开始：恢复队列显示
+      document.getElementById('progressWrap').classList.remove('active');
+      document.getElementById('queuePanel').style.display='';
+      renderQueueList();
+      document.getElementById('analyzeBtn').disabled=false;
+      document.getElementById('analyzeBtn').textContent=`开始分析 ${uploadQueue.length} 个视频 →`;
+    } else {
+      // 空闲：完全重置
+      document.getElementById('progressWrap').classList.remove('active');
+      document.getElementById('queuePanel').style.display='none';
+      document.getElementById('queueList').innerHTML='';
+      document.getElementById('analyzeBtn').disabled=true;
+      document.getElementById('analyzeBtn').textContent='选择视频后开始分析';
+      document.getElementById('progressBar').style.width='0%';
+      document.getElementById('progressBar').style.background='var(--accent)';
+    }
+
+    // 这些始终重置（不影响分析状态）
     uploadedFile=null;specCheckPassed=false;
     document.getElementById('dropLabel').textContent='拖拽视频到这里';
     document.getElementById('dropSub').textContent='或点击选择文件 · 系统自动验证规格';
-    document.getElementById('analyzeBtn').disabled=true;document.getElementById('analyzeBtn').textContent='选择视频后开始分析';
-    uploadQueue=[];isProcessing=false;document.getElementById('queuePanel').style.display='none';document.getElementById('queueList').innerHTML='';
-    isProcessing=false;
-    document.getElementById('progressBar').style.width='0%';
-    document.getElementById('progressBar').style.background='var(--accent)';
-    ['spec-res','spec-fps','spec-dur','spec-fmt'].forEach(id=>{const el=document.getElementById(id);el.textContent='等待视频…';el.className='spec-val pending';});
+    ['spec-res','spec-fps','spec-dur','spec-fmt'].forEach(id=>{
+      const el=document.getElementById(id);
+      el.textContent='等待视频…';el.className='spec-val pending';
+    });
   }
   if(name==='feedback')renderVideoList();
   if(name==='history')renderHistory();
