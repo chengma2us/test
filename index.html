@@ -309,6 +309,20 @@
   .empty-state { text-align: center; padding: 80px; color: var(--muted); font-size: 14px; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
+
+  .queue-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-size: 13px;
+  }
+  .queue-item.running { border-color: var(--accent); }
+  .queue-item.done { border-color: rgba(0,229,160,0.3); opacity: 0.7; }
+  .queue-item.error { border-color: var(--danger); }
+  .queue-name { flex:1; font-family: var(--mono); font-size: 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .queue-status { font-size: 11px; color: var(--muted); white-space:nowrap; }
+  .queue-bar-track { width:80px; height:3px; background:var(--surface2); border-radius:2px; overflow:hidden; flex-shrink:0; }
+  .queue-bar-fill { height:100%; background:var(--accent); border-radius:2px; transition:width 0.4s; }
   @media (max-width: 768px) {
     .sidebar {
       width: 100%; height: auto; position: relative;
@@ -380,16 +394,16 @@
     </div>
 
     <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-      <input type="file" id="fileInput" accept="video/*" onchange="handleFile(this.files[0])">
+      <input type="file" id="fileInput" accept="video/*" multiple onchange="handleFiles(this.files)">
       <div class="dz-icon">
         <svg width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
       </div>
       <h3 id="dropLabel">拖拽视频到这里</h3>
-      <p id="dropSub">或点击选择文件 · 系统自动验证规格</p>
+      <p id="dropSub">或点击选择文件 · 支持多选 · 规格将由AI分析后给出</p>
     </div>
 
     <div class="spec-panel" id="specPanel">
-      <h3>第一关：视频规格自动检查</h3>
+      <h3>视频基本信息（规格合规性将在分析报告中给出）</h3>
       <div class="spec-row">
         <span class="spec-label">分辨率（需 ≥ 1080p）</span>
         <span class="spec-val pending" id="spec-res">等待视频…</span>
@@ -458,6 +472,11 @@
       <div class="progress-bar-track"><div class="progress-bar-fill" id="progressBar"></div></div>
       <p class="progress-label" id="progressPct">0%</p>
     </div>
+
+    <!-- 队列面板 -->
+    <div id="queuePanel" style="display:none;width:100%;max-width:640px;margin-top:12px">
+      <div id="queueList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
   </div>
 </div>
 
@@ -503,17 +522,62 @@ document.addEventListener('drop',e=>e.preventDefault());
 dz.addEventListener('dragenter',e=>{e.preventDefault();dz.classList.add('drag');});
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
 dz.addEventListener('dragleave',e=>{if(!dz.contains(e.relatedTarget))dz.classList.remove('drag');});
-dz.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleFile(f);});
+dz.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');if(e.dataTransfer.files.length)handleFiles(e.dataTransfer.files);});
 
-function handleFile(f){
-  if(!f)return;
-  const exts=['.mp4','.mov','.avi','.mkv','.m4v','.wmv','.webm','.MP4','.MOV','.AVI'];
-  const ext='.'+f.name.split('.').pop();
-  if(!f.type.startsWith('video/')&&!exts.includes(ext)){alert('请选择视频文件（MP4、MOV、AVI 等）');return;}
-  uploadedFile=f;
-  document.getElementById('dropLabel').textContent=f.name;
-  document.getElementById('dropSub').textContent=(f.size/1024/1024).toFixed(1)+' MB · 正在检查规格…';
-  runSpecCheck(f);
+// ── 队列系统 ──
+let uploadQueue = [];   // 待处理队列
+let isProcessing = false;
+
+function handleFiles(files) {
+  const exts=['.mp4','.mov','.avi','.mkv','.m4v','.wmv','.webm','.MP4','.MOV','.AVI','.MOV'];
+  const validFiles = Array.from(files).filter(f => {
+    const ext = '.' + f.name.split('.').pop();
+    return f.type.startsWith('video/') || exts.includes(ext);
+  });
+  if (!validFiles.length) { alert('请选择视频文件（MP4、MOV、AVI 等）'); return; }
+
+  // 更新拖拽区显示
+  document.getElementById('dropLabel').textContent = validFiles.length > 1
+    ? `已选择 ${validFiles.length} 个视频`
+    : validFiles[0].name;
+  document.getElementById('dropSub').textContent =
+    validFiles.map(f => (f.size/1024/1024).toFixed(1)+'MB').join(' · ');
+
+  // 加入队列（去重：同文件名+大小不重复加入）
+  validFiles.forEach(f => {
+    const isDup = uploadQueue.some(q => q.file.name === f.name && q.file.size === f.size);
+    if (!isDup) {
+      uploadQueue.push({ file: f, id: Date.now() + Math.floor(Math.random()*1000) + uploadQueue.length, status: 'pending' });
+    }
+  });
+
+  // 显示队列面板和分析按钮
+  document.getElementById('queuePanel').style.display = '';
+  document.getElementById('analyzeBtn').disabled = false;
+  document.getElementById('analyzeBtn').textContent = `开始分析 ${uploadQueue.length} 个视频 →`;
+  renderQueueList();
+
+  // 同时对第一个文件做规格预览（不阻止上传）
+  uploadedFile = validFiles[0];
+  runSpecCheck(validFiles[0]);
+}
+
+// 兼容旧的单文件拖拽
+function handleFile(f) { if(f) handleFiles([f]); }
+
+function renderQueueList() {
+  const list = document.getElementById('queueList');
+  list.innerHTML = uploadQueue.map(item => {
+    const icon = item.status==='done'?'✅':item.status==='error'?'❌':item.status==='running'?'⏳':'⏸';
+    const statusText = item.status==='done'?'完成':item.status==='error'?'失败':item.status==='running'?'分析中…':'等待中';
+    return `<div class="queue-item ${item.status}" id="qi-${item.id}">
+      <span style="font-size:14px">${icon}</span>
+      <span class="queue-name">${item.file.name}</span>
+      <span style="font-size:11px;color:var(--muted)">${(item.file.size/1024/1024).toFixed(1)}MB</span>
+      <div class="queue-bar-track"><div class="queue-bar-fill" id="qb-${item.id}" style="width:${item.status==='done'?100:item.status==='running'?50:0}%"></div></div>
+      <span class="queue-status">${statusText}</span>
+    </div>`;
+  }).join('');
 }
 
 function toggleCheck(el){if(!el.classList.contains('fatal'))el.classList.toggle('selected');}
@@ -567,26 +631,20 @@ function runSpecCheck(file){
       durEl.className = 'spec-val ok';
     }
 
-    // 只有明确读到且不合格时才阻止
+    // 规格仅供参考，不阻止上传
     const resActuallyFail = w > 0 && h > 0 && !resOk;
     const durActuallyFail = dur > 0 && dur < 30;
-    specCheckPassed = !resActuallyFail && !durActuallyFail;
+    specCheckPassed = true; // 始终放行
 
     const failBanner = document.getElementById('specFailBanner');
-    const btn = document.getElementById('analyzeBtn');
-    if (!specCheckPassed) {
+    if (resActuallyFail || durActuallyFail) {
       const r = [];
-      if (resActuallyFail) r.push('分辨率 '+w+'×'+h+'（需要 1920×1080）');
-      if (durActuallyFail) r.push('时长 '+fmtSec(dur)+'（需要 ≥ 30秒）');
-      failBanner.innerHTML = '⛔ 视频规格不合格，无法提交：'+r.join('；')+'。请重新录制后再上传。';
-      failBanner.classList.add('active');
-      btn.disabled = true;
-      btn.textContent = '规格不合格，无法分析';
+      if (resActuallyFail) r.push('分辨率 '+w+'×'+h+'（建议 1920×1080）');
+      if (durActuallyFail) r.push('时长 '+fmtSec(dur)+'（建议 ≥ 30秒）');
+      failBanner.innerHTML = '⚠️ 规格提示：'+r.join('；')+'。仍可上传，分析报告中会标注。';
+      failBanner.style.cssText = 'background:var(--warn-dim);border-color:var(--warn);color:var(--warn);display:block';
     } else {
       failBanner.classList.remove('active');
-      btn.disabled = false;
-      btn.textContent = '开始AI质检分析 →';
-      document.getElementById('dropSub').textContent = (uploadedFile.size/1024/1024).toFixed(1)+' MB · 规格检查通过 ✓';
     }
     URL.revokeObjectURL(tempUrl);
   }
@@ -607,10 +665,7 @@ function runSpecCheck(file){
       document.getElementById('spec-dur').className = 'spec-val ok';
       specCheckPassed = true;
       document.getElementById('specFailBanner').classList.remove('active');
-      const btn = document.getElementById('analyzeBtn');
-      btn.disabled = false;
-      btn.textContent = '开始AI质检分析 →';
-      document.getElementById('dropSub').textContent = (uploadedFile.size/1024/1024).toFixed(1)+' MB · 规格将由服务器检测 ✓';
+      document.getElementById('dropSub').textContent = (uploadedFile.size/1024/1024).toFixed(1)+' MB · 已选择，点击开始分析';
     }
   }, 3000);
 
@@ -646,64 +701,196 @@ function setMinHands(val) {
 // ── 修复：MODAL_API 指向 /analyze，已移除 OPTIONS 预热请求 ──
 const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run/analyze';
 
-async function startAnalysis(){
-  if(!specCheckPassed)return;
-  document.getElementById('configPanel').style.display='none';
-  document.getElementById('specPanel').style.display='none';
-  const pw=document.getElementById('progressWrap');pw.classList.add('active');
-  const bar=document.getElementById('progressBar'),pct=document.getElementById('progressPct'),
-        sub=document.getElementById('progressSub'),title=document.getElementById('progressTitle');
-  const steps=[[5,'读取视频文件…'],[12,'上传到分析服务器…'],[20,'抽取关键帧（每秒1帧）'],
-    [35,'初始化 MediaPipe 手部模型'],[50,'逐帧检测手部数量及位置'],[63,'计算手部移动速度'],
-    [74,'检测摄像头运动（光流法）'],[84,'人脸检测（PII扫描）'],[93,'计算综合评分']];
-  let stepIdx=0;
-  let fakeTimer=setInterval(()=>{
-    if(stepIdx<steps.length){const[p,label]=steps[stepIdx++];bar.style.width=p+'%';pct.textContent=p+'%';sub.textContent=label;}
-  },2200);
-  try{
-    // 先预热容器（避免冷启动 303），再上传
-    sub.textContent='连接服务器…';
-    try {
-      await fetch(MODAL_API.replace('/analyze','') + '/', {method:'GET', mode:'no-cors'});
-    } catch(e) {}
-    await new Promise(r => setTimeout(r, 1500));
+// ── 分析单个视频 ──
+async function analyzeOne(queueItem) {
+  const f = queueItem.file;
+  queueItem.status = 'running';
+  renderQueueList();
 
-    sub.textContent='上传中…';
+  // 更新队列进度条
+  const updateQBar = (pct) => {
+    const el = document.getElementById('qb-' + queueItem.id);
+    if (el) el.style.width = pct + '%';
+  };
+
+  // 主进度条
+  const bar = document.getElementById('progressBar');
+  const pct = document.getElementById('progressPct');
+  const sub = document.getElementById('progressSub');
+  const title = document.getElementById('progressTitle');
+
+  title.textContent = `分析中：${f.name}`;
+  bar.style.background = 'var(--accent)';
+
+  const steps = [[5,'读取视频…'],[15,'上传到服务器…'],[30,'抽取关键帧'],[50,'手部检测'],
+    [65,'速度分析'],[78,'摄像头检测'],[88,'人脸扫描'],[93,'计算评分']];
+  let stepIdx = 0;
+  const fakeTimer = setInterval(() => {
+    if (stepIdx < steps.length) {
+      const [p, label] = steps[stepIdx++];
+      bar.style.width = p + '%'; pct.textContent = p + '%';
+      sub.textContent = label; updateQBar(p);
+    }
+  }, 2000);
+
+  try {
     const formData = new FormData();
-    formData.append('file', uploadedFile, uploadedFile.name);
+    formData.append('file', f, f.name);
     formData.append('min_hands', minHands.toString());
-    const resp = await fetch(MODAL_API, {
-      method: 'POST',
-      body: formData,
-      redirect: 'follow',
-    });
+    const resp = await fetch(MODAL_API, { method:'POST', body:formData, redirect:'follow' });
     clearInterval(fakeTimer);
-    if(!resp.ok)throw new Error('服务器返回错误：'+resp.status);
-    const result=await resp.json();
-    bar.style.width='100%';pct.textContent='100%';sub.textContent='分析完成！';title.textContent='✅ 分析完成';
-    const dur=result.duration||0;
-    const newV={
-      id:Date.now(),name:uploadedFile.name,
-      date:new Date().toLocaleString('zh',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
-      duration:fmtSec(dur),totalDuration:dur,
-      spec:result.spec||{res:'1080p',fps:'30fps',ok:true},
-      rejected:result.rejected||false,score:result.score||0,
-      issues:(result.issues||[]).map(iss=>({...iss,fatal:iss.fatal||false})),
-      totalDrop:result.totalDrop||0,aiSummary:result.aiSummary||'分析完成。',
-      videoUrl:currentVideoUrl,videoFile:uploadedFile,debugFrames:result.debugFrames||[],
+    if (!resp.ok) throw new Error('服务器错误：' + resp.status);
+    const result = await resp.json();
+
+    bar.style.width = '100%'; pct.textContent = '100%';
+    sub.textContent = `${f.name} 完成`; updateQBar(100);
+    queueItem.status = 'done';
+    renderQueueList();
+
+    // 创建视频 blob URL
+    const videoUrl = URL.createObjectURL(f);
+    const dur = result.duration || 0;
+    const newV = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      name: f.name,
+      date: new Date().toLocaleString('zh',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
+      duration: fmtSec(dur), totalDuration: dur,
+      spec: result.spec || {res:'待检测',fps:'30fps',ok:true},
+      rejected: result.rejected || false,
+      score: result.score || 0,
+      issues: (result.issues||[]).map(iss=>({...iss,fatal:iss.fatal||false})),
+      totalDrop: result.totalDrop || 0,
+      aiSummary: result.aiSummary || '分析完成。',
+      videoUrl, videoFile: f,
+      debugFrames: result.debugFrames || [],
     };
-    setTimeout(()=>{videos.unshift(newV);addToHistory(newV);showView('feedback');renderVideoList();selectVideo(newV);},800);
-  }catch(err){
+
+    // 存 IndexedDB（用于刷新后播放）
+    await saveVideoToDB(newV.id, f);
+
+    videos.unshift(newV);
+    addToHistory(newV);
+    renderVideoList();
+    return newV;
+
+  } catch(err) {
     clearInterval(fakeTimer);
-    bar.style.width='100%';bar.style.background='var(--danger)';
-    title.textContent='❌ 分析失败';sub.textContent=err.message;pct.textContent='请检查网络后重试';
+    queueItem.status = 'error';
+    renderQueueList();
+    updateQBar(0);
+    sub.textContent = `${f.name} 失败：${err.message}`;
     console.error(err);
+    return null;
   }
 }
 
+// ── 启动队列处理 ──
+async function startAnalysis() {
+  if (!uploadQueue.length) return;
+  if (isProcessing) return;
+  isProcessing = true;
+
+  document.getElementById('configPanel').style.display = 'none';
+  document.getElementById('specPanel').style.display = 'none';
+  document.getElementById('progressWrap').classList.add('active');
+  document.getElementById('analyzeBtn').disabled = true;
+
+  let lastDone = null;
+  const pending = uploadQueue.filter(q => q.status === 'pending');
+
+  try {
+    for (const item of pending) {
+      const result = await analyzeOne(item);
+      if (result) lastDone = result;
+    }
+  } finally {
+    // 无论成功失败都重置 isProcessing
+    isProcessing = false;
+  }
+
+  const doneCount = uploadQueue.filter(q => q.status === 'done').length;
+  const errCount  = uploadQueue.filter(q => q.status === 'error').length;
+  document.getElementById('progressTitle').textContent =
+    errCount > 0
+      ? `✅ 完成 ${doneCount} 个，❌ 失败 ${errCount} 个`
+      : `✅ 全部 ${doneCount} 个视频分析完成`;
+
+  if (lastDone) {
+    setTimeout(() => {
+      showView('feedback');
+      renderVideoList();
+      selectVideo(lastDone);
+    }, 600);
+  }
+}
+
+
+// ── IndexedDB：持久化存储视频文件 ──
+const DB_NAME = 'vidscore_db';
+const DB_VER = 1;
+let db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (db) { resolve(db); return; }
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('videos')) {
+        d.createObjectStore('videos', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveVideoToDB(id, file) {
+  try {
+    const d = await openDB();
+    const tx = d.transaction('videos', 'readwrite');
+    tx.objectStore('videos').put({ id: String(id), file, savedAt: Date.now() });
+    return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  } catch(e) { console.warn('IndexedDB save failed:', e); }
+}
+
+async function loadVideoFromDB(id) {
+  try {
+    const d = await openDB();
+    const tx = d.transaction('videos', 'readonly');
+    return new Promise((res, rej) => {
+      const req = tx.objectStore('videos').get(String(id));
+      req.onsuccess = () => res(req.result?.file || null);
+      req.onerror = () => res(null);
+    });
+  } catch(e) { return null; }
+}
+
+async function deleteVideoFromDB(id) {
+  try {
+    const d = await openDB();
+    const tx = d.transaction('videos', 'readwrite');
+    tx.objectStore('videos').delete(String(id));
+  } catch(e) {}
+}
+
+// 启动时从 IndexedDB 恢复历史视频文件
+async function restoreVideosFromDB() {
+  for (const v of historyRows) {
+    if (!v.videoFile) {
+      const file = await loadVideoFromDB(v.id);
+      if (file) {
+        v.videoFile = file;
+        v.videoUrl = URL.createObjectURL(file);
+        // 同步到 videos 数组
+        if (!videos.find(x => x.id === v.id)) videos.unshift(v);
+      }
+    }
+  }
+  renderVideoList();
+}
 const historyRows=[];
 function loadHistory(){try{const s=localStorage.getItem('vidscore_history');if(s)JSON.parse(s).forEach(v=>historyRows.push(v));}catch(e){}}
-loadHistory();
 
 
 function addToHistory(v,init){
@@ -712,11 +899,15 @@ function addToHistory(v,init){
   if(!init)renderHistory();
 }
 
-function clearHistory(){
+async function clearHistory(){
   if(!confirm('确定清空所有历史记录？'))return;
+  // 清 IndexedDB 里的视频
+  for(const v of historyRows){ await deleteVideoFromDB(v.id); }
   historyRows.length=0;
+  videos.length=0;
   try{localStorage.removeItem('vidscore_history');}catch(e){}
   renderHistory();
+  renderVideoList();
 }
 
 function renderHistory(){
@@ -743,6 +934,8 @@ function showView(name){
     document.getElementById('dropLabel').textContent='拖拽视频到这里';
     document.getElementById('dropSub').textContent='或点击选择文件 · 系统自动验证规格';
     document.getElementById('analyzeBtn').disabled=true;document.getElementById('analyzeBtn').textContent='选择视频后开始分析';
+    uploadQueue=[];isProcessing=false;document.getElementById('queuePanel').style.display='none';document.getElementById('queueList').innerHTML='';
+    isProcessing=false;
     document.getElementById('progressBar').style.width='0%';
     document.getElementById('progressBar').style.background='var(--accent)';
     ['spec-res','spec-fps','spec-dur','spec-fmt'].forEach(id=>{const el=document.getElementById(id);el.textContent='等待视频…';el.className='spec-val pending';});
@@ -888,21 +1081,22 @@ function setupVideoOverlay(v) {
   const overlay = document.getElementById('videoOverlay');
   if (!vid || !overlay) return;
 
-  vid.addEventListener('timeupdate', () => {
+  // 移除旧监听器，防止重复绑定
+  if (vid._overlayHandler) {
+    vid.removeEventListener('timeupdate', vid._overlayHandler);
+  }
+  vid._overlayHandler = () => {
     const t = vid.currentTime;
     const active = [];
     (v.issues || []).forEach(iss => {
       const inSeg = (iss.segments || []).some(([s, e]) => t >= s && t <= e);
       if (inSeg) active.push(iss);
     });
-    if (active.length === 0) {
-      overlay.innerHTML = '';
-      return;
-    }
-    overlay.innerHTML = active.map(iss =>
+    overlay.innerHTML = active.length === 0 ? '' : active.map(iss =>
       `<span class="overlay-tag ${iss.severity}">⚠ ${iss.name}</span>`
     ).join('');
-  });
+  };
+  vid.addEventListener('timeupdate', vid._overlayHandler);
 
   // 点击时间轴跳转
   document.querySelectorAll('.tl-seg').forEach(seg => {
@@ -918,8 +1112,10 @@ function setupVideoOverlay(v) {
   });
 }
 
+loadHistory();
 renderVideoList();
 showView('upload');
+restoreVideosFromDB();
 </script>
 </body>
 </html>
