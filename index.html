@@ -478,15 +478,6 @@
 </div>
 
 <script>
-const CHECK_DEFS = [
-  { id: 'no_hands',    name: '少于2只手可见',   severity: 'danger', weight: 999,  fatal: true  },
-  { id: 'face',        name: '出现人脸（PII）', severity: 'danger', weight: 999,  fatal: true  },
-  { id: 'extra_hands', name: '超过2只手可见',   severity: 'warn',   weight: 0.30, fatal: false },
-  { id: 'hand_fast',   name: '手部移动过快',    severity: 'warn',   weight: 0.20, fatal: false },
-  { id: 'cam_fast',    name: '摄像头移动过快',  severity: 'warn',   weight: 0.20, fatal: false },
-  { id: 'low_conf',    name: '手部置信度低',    severity: 'info',   weight: 0.15, fatal: false },
-];
-
 let videos = [];
 
 let selectedVideo=null, uploadedFile=null, currentVideoUrl=null, specCheckPassed=false;
@@ -514,8 +505,9 @@ function toggleCheck(el){if(!el.classList.contains('fatal'))el.classList.toggle(
 
 function runSpecCheck(file){
   const vid=document.createElement('video');
-  const url=URL.createObjectURL(file);
-  currentVideoUrl=url; vid.src=url; vid.preload='metadata';
+  const tempUrl=URL.createObjectURL(file);
+  currentVideoUrl=URL.createObjectURL(file); // 保留一份给播放用
+  vid.src=tempUrl; vid.preload='metadata';
   const fmt=file.type, fmtEl=document.getElementById('spec-fmt');
   if(fmt.startsWith('video/')){fmtEl.textContent=fmt.split('/')[1].toUpperCase()+' ✓';fmtEl.className='spec-val ok';}
   else{fmtEl.textContent=fmt+' ✗';fmtEl.className='spec-val fail';}
@@ -539,7 +531,7 @@ function runSpecCheck(file){
       failBanner.classList.remove('active');btn.disabled=false;btn.textContent='开始AI质检分析 →';
       document.getElementById('dropSub').textContent=(uploadedFile.size/1024/1024).toFixed(1)+' MB · 规格检查通过 ✓';
     }
-    URL.revokeObjectURL(vid.src);
+    URL.revokeObjectURL(tempUrl); // 只撤销临时URL，currentVideoUrl保留
   };
 }
 
@@ -633,8 +625,6 @@ loadHistory();
 
 function addToHistory(v,init){
   historyRows.unshift(v);
-  // videos 保留带 videoFile 的版本（本次会话）
-  if(!videos.find(x=>x.id===v.id)) videos.unshift(v);
   try{const ts=historyRows.map(h=>({...h,videoFile:null,videoUrl:null,debugFrames:[]}));localStorage.setItem('vidscore_history',JSON.stringify(ts.slice(0,100)));}catch(e){}
   if(!init)renderHistory();
 }
@@ -651,7 +641,7 @@ function renderHistory(){
     <tr onclick="showView('feedback');setTimeout(()=>{const vd=videos.find(x=>x.id===${v.id})||historyRows.find(x=>x.id===${v.id});selectVideo(vd);},50)" style="cursor:pointer">
       <td style="font-weight:500">${v.name}</td><td>${v.date}</td><td>${v.duration}</td>
       <td style="color:${v.spec.ok?'var(--accent)':'var(--danger)'}">${v.spec.res||'—'}</td>
-      <td style="color:${scoreColor(v.score)};font-weight:600">${v.rejected?'拒绝':v.score}</td>
+      <td style="color:${v.rejected?'var(--danger)':scoreColor(v.score)};font-weight:600">${v.rejected?'拒绝':v.score}</td>
       <td>${v.issues.length?v.issues[0].name:'—'}</td>
       <td><span class="chip ${v.rejected?'danger':v.score>=70?'ok':v.score>=40?'warn':'danger'}">${v.rejected?'不合格':v.score>=70?'合格':v.score>=40?'待改进':'不合格'}</span></td>
     </tr>`).join('');
@@ -671,6 +661,7 @@ function showView(name){
     document.getElementById('dropSub').textContent='或点击选择文件 · 系统自动验证规格';
     document.getElementById('analyzeBtn').disabled=true;document.getElementById('analyzeBtn').textContent='选择视频后开始分析';
     document.getElementById('progressBar').style.width='0%';
+    document.getElementById('progressBar').style.background='var(--accent)';
     ['spec-res','spec-fps','spec-dur','spec-fmt'].forEach(id=>{const el=document.getElementById(id);el.textContent='等待视频…';el.className='spec-val pending';});
   }
   if(name==='feedback')renderVideoList();
@@ -703,9 +694,12 @@ function scoreColor(s){return s>=70?'var(--accent)':s>=40?'var(--warn)':'var(--d
 
 function selectVideo(v){
   if(!v)return;selectedVideo=v;renderVideoList();
-  if(v.videoFile&&!v.videoUrl){v.videoUrl=URL.createObjectURL(v.videoFile);}
-  else if(v.videoFile){try{URL.revokeObjectURL(v.videoUrl);}catch(e){}v.videoUrl=URL.createObjectURL(v.videoFile);}
-  const dur=v.totalDuration,dropped=parseFloat(v.totalDrop),pctDrop=Math.min(100,Math.round(dropped/dur*100));
+  // 始终用 videoFile 创建新 URL，避免旧 blob URL 失效
+  if(v.videoFile){
+    try{if(v.videoUrl)URL.revokeObjectURL(v.videoUrl);}catch(e){}
+    v.videoUrl=URL.createObjectURL(v.videoFile);
+  }
+  const dur=v.totalDuration||0,dropped=parseFloat(v.totalDrop)||0,pctDrop=dur>0?Math.min(100,Math.round(dropped/dur*100)):0;
   const hasFatal=v.issues.some(i=>i.fatal),specFail=v.spec&&!v.spec.ok;
   const segs=v.issues.flatMap(iss=>(iss.segments||[]).map(([s,e])=>({s,e,sev:iss.severity,name:iss.name,fatal:iss.fatal}))).sort((a,b)=>a.s-b.s);
   const segHtml=segs.map(sg=>{
