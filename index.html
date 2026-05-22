@@ -214,6 +214,64 @@
   .overlay-tag.warn   { background: rgba(255,178,63,0.85); color: #0d0f12; }
   .overlay-tag.info   { background: rgba(77,166,255,0.85); color: #fff; }
   @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+
+  /* 轨迹分析器 */
+  .trajectory-section { margin-bottom: 32px; }
+  .traj-controls { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .traj-time-input { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .traj-time-input input[type=number] {
+    width:60px; padding:4px 8px; border-radius:5px;
+    border:1px solid var(--border2); background:var(--surface2);
+    color:var(--text); font-family:var(--mono); font-size:12px;
+  }
+  .traj-btn {
+    padding:7px 16px; border-radius:6px; border:none;
+    background:var(--accent); color:#0d0f12;
+    font-size:13px; font-weight:600; cursor:pointer;
+    font-family:var(--sans); transition:opacity 0.15s;
+  }
+  .traj-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .traj-btn:not(:disabled):hover { opacity:0.85; }
+  .traj-btn.secondary {
+    background:transparent; border:1px solid var(--border2); color:var(--muted);
+  }
+  .traj-btn.secondary:not(:disabled):hover { border-color:var(--text); color:var(--text); }
+  .traj-range-wrap {
+    position:relative; width:100%; height:40px; margin-bottom:8px;
+    background:var(--surface2); border-radius:5px; overflow:visible;
+    border:1px solid var(--border);
+  }
+  .traj-range-bar {
+    position:absolute; top:0; height:100%;
+    background:var(--accent-dim); border:1px solid var(--accent);
+    border-radius:4px; pointer-events:none;
+  }
+  .traj-handle {
+    position:absolute; top:50%; transform:translate(-50%,-50%);
+    width:16px; height:24px; background:var(--accent);
+    border-radius:4px; cursor:ew-resize; z-index:10;
+    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+  }
+  .traj-handle:hover { background:#00ffb0; }
+  .traj-time-labels { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); font-family:var(--mono); margin-top:2px; }
+  .traj-canvas-wrap {
+    position:relative; width:100%; border-radius:8px; overflow:hidden;
+    border:1px solid var(--border); background:#000; display:none;
+  }
+  .traj-canvas-wrap.active { display:block; }
+  .traj-canvas-wrap canvas { width:100%; display:block; }
+  .traj-playbar { display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--surface2); }
+  .traj-playbar button {
+    padding:4px 12px; border-radius:5px; border:1px solid var(--border2);
+    background:transparent; color:var(--text); cursor:pointer; font-size:12px;
+  }
+  .traj-playbar button:hover { background:var(--surface); }
+  .traj-progress { flex:1; height:3px; background:var(--border); border-radius:2px; cursor:pointer; }
+  .traj-progress-fill { height:100%; background:var(--accent); border-radius:2px; width:0%; pointer-events:none; }
+  .traj-status { font-size:11px; color:var(--muted); font-family:var(--mono); }
+  .traj-legend { display:flex; gap:14px; margin-top:8px; flex-wrap:wrap; }
+  .traj-legend-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
+  .traj-legend-dot { width:10px; height:3px; border-radius:2px; }
   .no-video-placeholder {
     width: 100%; aspect-ratio: 16/9; background: var(--surface2);
     border-radius: 8px; display: flex; align-items: center; justify-content: center;
@@ -1107,10 +1165,400 @@ function selectVideo(v){
         <div class="ai-chips">${v.issues.map(i=>`<span class="chip ${i.fatal?'danger':i.severity==='warn'?'warn':'info'}">${i.name} · ${i.duration}</span>`).join('')}</div>
       </div>
       ${renderDebugFrames(v.debugFrames, v.issues)}
-    </div>`;
+    </div>
+    ${v.videoFile ? renderTrajectorySection(v) : ''}`;
   // 设置实时覆盖层
   if(v.videoUrl) setTimeout(()=>setupVideoOverlay(v), 100);
+  // 初始化轨迹滑块
+  if(v.videoFile) setTimeout(()=>{
+    trajStartSec = 0;
+    trajEndSec = Math.min(30, v.totalDuration || 30);
+    trajData = null; trajVideo = null; trajPlaying = false;
+    wristTrail[0] = []; wristTrail[1] = [];
+    const wrap = document.getElementById('trajCanvasWrap');
+    if(wrap) wrap.classList.remove('active');
+    initTrajSliders(v.totalDuration || 30);
+  }, 150);
 }
+
+// ── 轨迹分析 ──
+const TRAJ_API = 'https://chengma2us--vidscore-analyze.modal.run/trajectory';
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [0,9],[9,10],[10,11],[11,12],
+  [0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20],
+  [5,9],[9,13],[13,17],
+];
+const HAND_COLORS = ['#00e5a0','#4da6ff']; // 左手绿，右手蓝
+
+let trajData = null;       // 后端返回的逐帧数据
+let trajVideo = null;      // 当前视频
+let trajRAF = null;        // requestAnimationFrame handle
+let trajPlaying = false;
+let trajCurrentFrame = 0;
+let trajStartSec = 0;
+let trajEndSec = 30;
+
+function renderTrajectorySection(v) {
+  const dur = v.totalDuration || 0;
+  const startDefault = 0;
+  const endDefault = Math.min(30, dur);
+  return `
+  <div class="trajectory-section">
+    <div class="section-title">手部轨迹分析</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      选取片段后点击"生成轨迹"，逐帧播放并叠加手部骨架和运动轨迹
+    </div>
+
+    <!-- 片段选择器 -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">选取片段</div>
+      <div class="traj-range-wrap" id="trajRangeWrap" style="cursor:pointer">
+        <div class="traj-range-bar" id="trajRangeBar"></div>
+        <div class="traj-handle" id="trajHandleStart" title="拖动设置开始时间"></div>
+        <div class="traj-handle" id="trajHandleEnd" title="拖动设置结束时间"></div>
+      </div>
+      <div class="traj-time-labels">
+        <span>0:00</span>
+        <span id="trajRangeLabel" style="color:var(--accent)">0:00 → ${fmtSec(endDefault)}</span>
+        <span>${fmtSec(dur)}</span>
+      </div>
+      <div class="traj-controls" style="margin-top:12px">
+        <div class="traj-time-input">
+          开始 <input type="number" id="trajStartInput" value="${startDefault}" min="0" max="${Math.floor(dur)}" step="1"> 秒
+        </div>
+        <div class="traj-time-input">
+          结束 <input type="number" id="trajEndInput" value="${Math.floor(endDefault)}" min="0" max="${Math.floor(dur)}" step="1"> 秒
+        </div>
+        <button class="traj-btn" id="trajGenBtn" onclick="generateTrajectory()">
+          生成轨迹
+        </button>
+        <span id="trajStatusText" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <!-- Canvas 播放器 -->
+    <div class="traj-canvas-wrap" id="trajCanvasWrap">
+      <canvas id="trajCanvas"></canvas>
+      <div class="traj-playbar">
+        <button id="trajPlayBtn" onclick="toggleTrajPlay()">▶ 播放</button>
+        <div class="traj-progress" id="trajProgressBar" onclick="seekTraj(event)">
+          <div class="traj-progress-fill" id="trajProgressFill"></div>
+        </div>
+        <span class="traj-status" id="trajTimeLabel">0:00</span>
+        <button class="traj-btn secondary" onclick="downloadTrajFrame()" style="padding:4px 10px;font-size:11px">截图</button>
+      </div>
+      <div class="traj-legend" style="padding:0 12px 10px">
+        <div class="traj-legend-item"><div class="traj-legend-dot" style="background:#00e5a0"></div>右手骨架</div>
+        <div class="traj-legend-item"><div class="traj-legend-dot" style="background:#4da6ff"></div>左手骨架</div>
+        <div class="traj-legend-item"><div class="traj-legend-dot" style="background:rgba(0,229,160,0.4)"></div>运动轨迹</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function initTrajSliders(dur) {
+  const wrap = document.getElementById('trajRangeWrap');
+  const bar = document.getElementById('trajRangeBar');
+  const hs = document.getElementById('trajHandleStart');
+  const he = document.getElementById('trajHandleEnd');
+  if (!wrap || !hs || !he) return;
+
+  function updateBar() {
+    const ww = wrap.offsetWidth;
+    const sp = (trajStartSec / dur) * 100;
+    const ep = (trajEndSec / dur) * 100;
+    bar.style.left = sp + '%';
+    bar.style.width = (ep - sp) + '%';
+    hs.style.left = sp + '%';
+    he.style.left = ep + '%';
+    document.getElementById('trajRangeLabel').textContent =
+      fmtSec(trajStartSec) + ' → ' + fmtSec(trajEndSec);
+    document.getElementById('trajStartInput').value = Math.round(trajStartSec);
+    document.getElementById('trajEndInput').value = Math.round(trajEndSec);
+  }
+
+  function makeDrag(handle, isStart) {
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const onMove = ev => {
+        const rect = wrap.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const t = ratio * dur;
+        if (isStart) {
+          trajStartSec = Math.min(t, trajEndSec - 1);
+        } else {
+          trajEndSec = Math.max(t, trajStartSec + 1);
+          trajEndSec = Math.min(trajEndSec, dur);
+        }
+        updateBar();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    // 触摸支持
+    handle.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const onMove = ev => {
+        const rect = wrap.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (ev.touches[0].clientX - rect.left) / rect.width));
+        const t = ratio * dur;
+        if (isStart) {
+          trajStartSec = Math.min(t, trajEndSec - 1);
+        } else {
+          trajEndSec = Math.max(t, trajStartSec + 1);
+          trajEndSec = Math.min(trajEndSec, dur);
+        }
+        updateBar();
+      };
+      const onUp = () => {
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onUp);
+      };
+      document.addEventListener('touchmove', onMove, {passive:false});
+      document.addEventListener('touchend', onUp);
+    }, {passive:false});
+  }
+
+  makeDrag(hs, true);
+  makeDrag(he, false);
+
+  // 数字输入框同步
+  document.getElementById('trajStartInput').addEventListener('input', e => {
+    trajStartSec = Math.max(0, Math.min(parseFloat(e.target.value)||0, trajEndSec-1));
+    updateBar();
+  });
+  document.getElementById('trajEndInput').addEventListener('input', e => {
+    trajEndSec = Math.min(dur, Math.max(parseFloat(e.target.value)||1, trajStartSec+1));
+    updateBar();
+  });
+
+  updateBar();
+}
+
+async function generateTrajectory() {
+  const v = selectedVideo;
+  if (!v || !v.videoFile) {
+    alert('需要本次会话上传的视频文件，刷新后视频文件丢失无法生成轨迹');
+    return;
+  }
+  const dur = v.totalDuration || 0;
+  initTrajSliders(dur);
+
+  const btn = document.getElementById('trajGenBtn');
+  const status = document.getElementById('trajStatusText');
+  btn.disabled = true;
+  btn.textContent = '分析中…';
+  status.textContent = `正在逐帧分析 ${fmtSec(trajStartSec)}–${fmtSec(trajEndSec)}，请等待…`;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', v.videoFile, v.videoFile.name);
+    formData.append('start', trajStartSec.toString());
+    formData.append('end', trajEndSec.toString());
+
+    const resp = await fetch(TRAJ_API, {method:'POST', body:formData, redirect:'follow'});
+    if (!resp.ok) throw new Error('服务器错误：' + resp.status);
+    trajData = await resp.json();
+
+    status.textContent = `✅ 分析完成，共 ${trajData.frames.length} 帧`;
+    btn.textContent = '重新生成';
+    btn.disabled = false;
+
+    // 初始化 Canvas 播放器
+    initTrajPlayer(v);
+
+  } catch(err) {
+    status.textContent = '❌ 失败：' + err.message;
+    btn.textContent = '生成轨迹';
+    btn.disabled = false;
+    console.error(err);
+  }
+}
+
+function initTrajPlayer(v) {
+  const wrap = document.getElementById('trajCanvasWrap');
+  const canvas = document.getElementById('trajCanvas');
+  wrap.classList.add('active');
+
+  // 用视频文件创建 video 元素用于逐帧绘制
+  if (trajVideo) { trajVideo.pause(); trajVideo.src = ''; }
+  trajVideo = document.createElement('video');
+  trajVideo.src = URL.createObjectURL(v.videoFile);
+  trajVideo.muted = true;
+  trajVideo.playsInline = true;
+
+  trajVideo.onloadedmetadata = () => {
+    canvas.width = trajVideo.videoWidth;
+    canvas.height = trajVideo.videoHeight;
+    trajCurrentFrame = 0;
+    trajPlaying = false;
+    document.getElementById('trajPlayBtn').textContent = '▶ 播放';
+    // 跳到片段开始
+    trajVideo.currentTime = trajStartSec;
+    drawTrajFrame();
+  };
+}
+
+// 手腕轨迹历史（用于画运动轨迹线）
+const wristTrail = [[], []]; // 最多2只手的手腕轨迹
+const TRAIL_LENGTH = 30;     // 保留最近30帧轨迹
+
+function drawTrajFrame() {
+  const canvas = document.getElementById('trajCanvas');
+  if (!canvas || !trajVideo || !trajData) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // 找当前时间对应的帧数据
+  const t = trajVideo.currentTime;
+  const frameData = trajData.frames.reduce((closest, f) =>
+    Math.abs(f.t - t) < Math.abs(closest.t - t) ? f : closest,
+    trajData.frames[0]
+  );
+
+  // 画视频帧
+  ctx.drawImage(trajVideo, 0, 0, W, H);
+
+  if (frameData && frameData.hands.length > 0) {
+    // 更新手腕轨迹
+    frameData.hands.forEach((hand, hi) => {
+      if (hi < 2) {
+        const wrist = hand.pts[0]; // 关键点0是手腕
+        wristTrail[hi].push([wrist[0] * W, wrist[1] * H]);
+        if (wristTrail[hi].length > TRAIL_LENGTH) wristTrail[hi].shift();
+      }
+    });
+
+    // 画手腕运动轨迹（渐隐线条）
+    for (let hi = 0; hi < 2; hi++) {
+      const trail = wristTrail[hi];
+      if (trail.length < 2) continue;
+      const color = hi === 0 ? '0,229,160' : '77,166,255';
+      for (let i = 1; i < trail.length; i++) {
+        const alpha = i / trail.length * 0.7;
+        const width = i / trail.length * 3;
+        ctx.beginPath();
+        ctx.moveTo(trail[i-1][0], trail[i-1][1]);
+        ctx.lineTo(trail[i][0], trail[i][1]);
+        ctx.strokeStyle = `rgba(${color},${alpha})`;
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
+
+    // 画骨架
+    frameData.hands.forEach((hand, hi) => {
+      const color = HAND_COLORS[hi % HAND_COLORS.length];
+      const pts = hand.pts.map(p => [p[0]*W, p[1]*H]);
+
+      // 连线
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+      HAND_CONNECTIONS.forEach(([a, b]) => {
+        ctx.beginPath();
+        ctx.moveTo(pts[a][0], pts[a][1]);
+        ctx.lineTo(pts[b][0], pts[b][1]);
+        ctx.stroke();
+      });
+
+      // 关键点
+      pts.forEach((pt, pi) => {
+        const r = [4,8,12,16,20].includes(pi) ? 6 : 4; // 指尖大点
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], r, 0, Math.PI*2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+
+      // 置信度标签（手腕旁）
+      const wrist = pts[0];
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(wrist[0]+6, wrist[1]-10, 50, 16);
+      ctx.fillStyle = color;
+      ctx.font = '11px monospace';
+      ctx.fillText(`${hand.side} ${Math.round(hand.conf*100)}%`, wrist[0]+8, wrist[1]+3);
+    });
+  } else {
+    // 没检测到手，清空轨迹
+    wristTrail[0] = []; wristTrail[1] = [];
+    // 画"未检测到手"提示
+    ctx.fillStyle = 'rgba(255,77,109,0.7)';
+    ctx.fillRect(10, 10, 120, 24);
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('未检测到手部', 16, 26);
+  }
+
+  // 更新进度条
+  const progress = (t - trajStartSec) / (trajEndSec - trajStartSec);
+  const fill = document.getElementById('trajProgressFill');
+  if (fill) fill.style.width = Math.max(0, Math.min(100, progress*100)) + '%';
+  const label = document.getElementById('trajTimeLabel');
+  if (label) label.textContent = fmtSec(t);
+}
+
+function toggleTrajPlay() {
+  if (!trajVideo || !trajData) return;
+  if (trajPlaying) {
+    trajPlaying = false;
+    trajVideo.pause();
+    if (trajRAF) cancelAnimationFrame(trajRAF);
+    document.getElementById('trajPlayBtn').textContent = '▶ 播放';
+  } else {
+    trajPlaying = true;
+    // 如果到了结尾，从头开始
+    if (trajVideo.currentTime >= trajEndSec - 0.1) {
+      trajVideo.currentTime = trajStartSec;
+      wristTrail[0] = []; wristTrail[1] = [];
+    }
+    trajVideo.play();
+    document.getElementById('trajPlayBtn').textContent = '⏸ 暂停';
+    function loop() {
+      if (!trajPlaying) return;
+      if (trajVideo.currentTime >= trajEndSec) {
+        trajVideo.pause();
+        trajPlaying = false;
+        document.getElementById('trajPlayBtn').textContent = '▶ 播放';
+        return;
+      }
+      drawTrajFrame();
+      trajRAF = requestAnimationFrame(loop);
+    }
+    loop();
+  }
+}
+
+function seekTraj(e) {
+  if (!trajVideo || !trajData) return;
+  const bar = document.getElementById('trajProgressBar');
+  const rect = bar.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const t = trajStartSec + ratio * (trajEndSec - trajStartSec);
+  trajVideo.currentTime = t;
+  wristTrail[0] = []; wristTrail[1] = [];
+  drawTrajFrame();
+}
+
+function downloadTrajFrame() {
+  const canvas = document.getElementById('trajCanvas');
+  if (!canvas) return;
+  const a = document.createElement('a');
+  a.download = `trajectory_${fmtSec(trajVideo?.currentTime||0).replace(':','-')}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
 
 function renderDebugFrames(frames, issues){
   // frames 现在是带元数据的对象数组：{b64, time, issueId, issueName, severity}
