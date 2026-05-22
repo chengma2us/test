@@ -101,35 +101,26 @@
   .check-item {
     display: flex; align-items: flex-start; gap: 10px;
     padding: 12px 14px; background: var(--surface2);
-    border-radius: 8px; font-size: 13px; cursor: pointer;
-    border: 1.5px solid transparent; transition: all 0.15s;
+    border-radius: 8px; font-size: 13px;
+    border: 1.5px solid var(--border); transition: all 0.15s;
     flex-direction: column;
   }
-  .check-item:hover { border-color: var(--border2); }
-  .check-item.selected { border-color: var(--accent); background: var(--accent-dim); }
-  .check-item.fatal { border-color: var(--danger) !important; background: var(--danger-dim) !important; cursor: default; }
+  .check-item.drop { border-color: rgba(255,178,63,0.3); background: rgba(255,178,63,0.05); }
+  .check-item.fatal { border-color: var(--danger); background: var(--danger-dim); }
   .check-item input { display: none; }
-  .check-name { font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .check-name { font-weight: 500; display: flex; align-items: center; gap: 6px; width: 100%; }
   .check-desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
-  .check-item.selected .check-desc { color: rgba(0,229,160,0.6); }
-  .check-item.fatal .check-desc { color: rgba(255,77,109,0.6); }
+  .check-item.fatal .check-desc { color: rgba(255,77,109,0.7); }
+  .check-item.drop .check-desc { color: rgba(255,178,63,0.7); }
   .weight-tag {
-    font-size: 10px; font-family: var(--mono);
-    padding: 1px 5px; border-radius: 3px; margin-left: auto;
+    font-size: 9.5px; font-family: var(--mono); font-weight: 600;
+    padding: 2px 6px; border-radius: 3px; margin-left: auto;
     background: rgba(255,255,255,0.06); color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
   }
-  .check-item.fatal .weight-tag { background: var(--danger-dim); color: var(--danger); }
-  .check-item.selected .weight-tag { background: var(--accent-dim); color: var(--accent); }
+  .check-item.fatal .weight-tag { background: var(--danger); color: #fff; }
+  .check-item.drop .weight-tag { background: var(--warn); color: #0d0f12; }
 
-
-  .hand-count-btn {
-    padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border2);
-    background: transparent; color: var(--muted); font-size: 12px; font-family: var(--sans);
-    cursor: pointer; transition: all 0.15s;
-  }
-  .hand-count-btn:hover { border-color: var(--accent); color: var(--text); }
-  .hand-count-btn.active { background: var(--danger-dim); border-color: var(--danger); color: var(--danger); font-weight: 600; }
-  .hand-count-btn[data-val="0"].active { background: var(--surface2); border-color: var(--border2); color: var(--muted); }
   .analyze-btn {
     width: 100%; margin-top: 16px; padding: 13px;
     background: var(--accent); color: #0d0f12;
@@ -206,13 +197,18 @@
     z-index: 10;
   }
   .overlay-tag {
-    padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
     font-family: var(--sans); backdrop-filter: blur(8px);
     animation: fadeIn 0.2s ease;
+    display: inline-flex; align-items: center; gap: 6px;
   }
-  .overlay-tag.danger { background: rgba(255,77,109,0.85); color: #fff; }
-  .overlay-tag.warn   { background: rgba(255,178,63,0.85); color: #0d0f12; }
-  .overlay-tag.info   { background: rgba(77,166,255,0.85); color: #fff; }
+  .overlay-tag.danger { background: rgba(255,77,109,0.9); color: #fff; }
+  .overlay-tag.warn   { background: rgba(255,178,63,0.9); color: #0d0f12; }
+  .overlay-tag.info   { background: rgba(77,166,255,0.9); color: #fff; }
+  .overlay-tag .drop-pill {
+    background: rgba(0,0,0,0.25); padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+  }
   @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 
   /* 轨迹分析器 */
@@ -289,6 +285,8 @@
   .tl-legend { display: flex; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
   .tl-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
   .tl-legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+  .tl-stats { font-size: 11.5px; color: var(--muted); font-family: var(--mono); margin-top: 8px; }
+  .tl-stats strong { color: var(--warn); }
 
   .speed-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .speed-label { font-size: 12px; color: var(--muted); }
@@ -331,7 +329,8 @@
   .issue-name { flex: 1; font-weight: 500; }
   .issue-duration { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--surface2); padding: 3px 8px; border-radius: 4px; }
   .issue-time { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-  .fatal-label { font-size: 10px; font-weight: 600; color: var(--danger); background: var(--danger-dim); padding: 2px 6px; border-radius: 3px; }
+  .fatal-label { font-size: 10px; font-weight: 600; color: #fff; background: var(--danger); padding: 2px 7px; border-radius: 3px; letter-spacing: 0.5px; }
+  .drop-label { font-size: 10px; font-weight: 600; color: #0d0f12; background: var(--warn); padding: 2px 7px; border-radius: 3px; letter-spacing: 0.5px; }
 
   .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 24px; }
   .spec-card {
@@ -438,7 +437,7 @@
   </div>
   <div class="sidebar-footer">
     检测标准：FF数据规范<br>
-    v2.0 · 按文件权重评分
+    v3.0 · 局部丢弃 + 可用率评分
   </div>
 </nav>
 
@@ -448,7 +447,7 @@
   <div style="width:100%;display:flex;flex-direction:column;align-items:center;padding:48px 40px;overflow-y:auto;">
     <div class="upload-header">
       <h1>上传视频进行质检</h1>
-      <p>系统将自动检测规格合规性，再进行AI手部分析 · 支持 MP4 / MOV / AVI</p>
+      <p>问题片段会被局部丢弃，按可用率打分 · 支持 MP4 / MOV / AVI</p>
     </div>
 
     <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
@@ -483,44 +482,44 @@
     <div class="spec-fail-banner" id="specFailBanner"></div>
 
     <div class="config-panel" id="configPanel">
-      <h3>第二关：AI手部质检项目</h3>
-      <p class="sub">标红项为一票否决项（任何一帧违规 → 直接不合格），其余按权重扣分</p>
-      <!-- 最少手数选择器 -->
-      <div style="margin-bottom:12px;padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border2)">
-        <div style="font-size:12px;font-weight:500;color:var(--text);margin-bottom:10px">✋ 最少可见手数要求（一票否决）</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="hand-count-btn" data-val="0" onclick="setMinHands(0)">不限制</button>
-          <button class="hand-count-btn" data-val="1" onclick="setMinHands(1)">≥ 1只手</button>
-          <button class="hand-count-btn active" data-val="2" onclick="setMinHands(2)">≥ 2只手（默认）</button>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:8px" id="handCountDesc">单手操作任务选"≥1只手"，双手协作任务选"≥2只手"</div>
-      </div>
+      <h3>质检标准</h3>
+      <p class="sub">
+        <strong style="color:var(--danger)">REJECT</strong> = 整段视频拒收（仅限隐私问题） ·
+        <strong style="color:var(--warn)">DROP</strong> = 该片段丢弃，剩余部分按可用率打分
+      </p>
+
       <div class="check-grid">
-        <div class="check-item fatal" id="noHandsItem" style="display:none">
-          <div class="check-name">✋ 少于2只手可见<span class="weight-tag" id="noHandsTag">一票否决</span></div>
-          <div class="check-desc" id="noHandsDesc">操作手必须始终在画面内，任何帧缺失即不合格</div>
-        </div>
         <div class="check-item fatal">
-          <div class="check-name">👤 出现人脸（PII）<span class="weight-tag">一票否决</span></div>
-          <div class="check-desc">隐私数据，任何帧出现人脸即不合格</div>
+          <div class="check-name">🚫 出现人脸 / 儿童（PII）<span class="weight-tag">REJECT</span></div>
+          <div class="check-desc">隐私敏感数据，任何帧出现即整段拒收</div>
         </div>
-        <div class="check-item selected" onclick="toggleCheck(this)">
-          <div class="check-name">🖐️ 超过2只手可见<span class="weight-tag">-30%</span></div>
-          <div class="check-desc">画面内出现第三只手，非操作员本人</div>
+        <div class="check-item drop">
+          <div class="check-name">✋ 看不到手<span class="weight-tag">DROP</span></div>
+          <div class="check-desc">画面内无手部，该片段丢弃不计入训练数据</div>
         </div>
-        <div class="check-item selected" onclick="toggleCheck(this)">
-          <div class="check-name">⚡ 手部移动过快<span class="weight-tag">-20%</span></div>
-          <div class="check-desc">需慢速操作，在抓取/释放时有0.3–0.5s停顿</div>
+        <div class="check-item drop">
+          <div class="check-name">🖐️ 超过2只手<span class="weight-tag">DROP</span></div>
+          <div class="check-desc">出现第三只手（非操作员本人），该片段丢弃</div>
         </div>
-        <div class="check-item selected" onclick="toggleCheck(this)">
-          <div class="check-name">🎥 摄像头移动过快<span class="weight-tag">-20%</span></div>
-          <div class="check-desc">操作员应保持静止，最多1–2步移动</div>
+        <div class="check-item drop">
+          <div class="check-name">⚡ 手部移动过快<span class="weight-tag">DROP</span></div>
+          <div class="check-desc">需慢速操作，抓取/释放时有 0.3–0.5s 停顿</div>
         </div>
-        <div class="check-item selected" onclick="toggleCheck(this)">
-          <div class="check-name">🔍 手部置信度低<span class="weight-tag">-15%</span></div>
+        <div class="check-item drop">
+          <div class="check-name">🎥 摄像头移动过快<span class="weight-tag">DROP</span></div>
+          <div class="check-desc">操作员应保持静止，最多 1–2 步移动</div>
+        </div>
+        <div class="check-item drop">
+          <div class="check-name">🔍 手部置信度低<span class="weight-tag">DROP</span></div>
           <div class="check-desc">手部被遮挡/模糊，模型无法锁定关键点</div>
         </div>
       </div>
+
+      <div style="margin-top:14px;padding:12px 14px;background:var(--surface2);border-radius:8px;font-size:11.5px;color:var(--muted);line-height:1.7">
+        <strong style="color:var(--text)">评分公式</strong>: 分数 = 100 − (丢弃时长 / 总时长) × 3.2 ·
+        例如 17.7% 时长被丢弃 → 43 分
+      </div>
+
       <button class="analyze-btn" id="analyzeBtn" disabled onclick="startAnalysis()">选择视频后开始分析</button>
     </div>
 
@@ -585,6 +584,10 @@ dz.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();dz.classLi
 let uploadQueue = [];   // 待处理队列
 let isProcessing = false;
 
+// ── 统一标准：min_hands 固定为 1 ──
+// 看不到手 → DROP 那一段（不区分 1/2 只手）
+const MIN_HANDS = 1;
+
 function handleFiles(files) {
   const exts=['.mp4','.mov','.avi','.mkv','.m4v','.wmv','.webm','.MP4','.MOV','.AVI','.MOV'];
   const validFiles = Array.from(files).filter(f => {
@@ -593,14 +596,12 @@ function handleFiles(files) {
   });
   if (!validFiles.length) { alert('请选择视频文件（MP4、MOV、AVI 等）'); return; }
 
-  // 更新拖拽区显示
   document.getElementById('dropLabel').textContent = validFiles.length > 1
     ? `已选择 ${validFiles.length} 个视频`
     : validFiles[0].name;
   document.getElementById('dropSub').textContent =
     validFiles.map(f => (f.size/1024/1024).toFixed(1)+'MB').join(' · ');
 
-  // 加入队列（去重：同文件名+大小不重复加入）
   validFiles.forEach(f => {
     const isDup = uploadQueue.some(q => q.file.name === f.name && q.file.size === f.size);
     if (!isDup) {
@@ -608,18 +609,15 @@ function handleFiles(files) {
     }
   });
 
-  // 显示队列面板和分析按钮
   document.getElementById('queuePanel').style.display = '';
   document.getElementById('analyzeBtn').disabled = false;
   document.getElementById('analyzeBtn').textContent = `开始分析 ${uploadQueue.length} 个视频 →`;
   renderQueueList();
 
-  // 同时对第一个文件做规格预览（不阻止上传）
   uploadedFile = validFiles[0];
   runSpecCheck(validFiles[0]);
 }
 
-// 兼容旧的单文件拖拽
 function handleFile(f) { if(f) handleFiles([f]); }
 
 function renderQueueList() {
@@ -637,21 +635,18 @@ function renderQueueList() {
   }).join('');
 }
 
-function toggleCheck(el){if(!el.classList.contains('fatal'))el.classList.toggle('selected');}
-
 function runSpecCheck(file){
   const fmt=file.type, fmtEl=document.getElementById('spec-fmt');
   if(fmt.startsWith('video/')){fmtEl.textContent=fmt.split('/')[1].toUpperCase()+' ✓';fmtEl.className='spec-val ok';}
   else{fmtEl.textContent=fmt+' ✗';fmtEl.className='spec-val fail';}
 
-  // 创建两个 URL：一个用于规格检测，一个保留给播放
   const tempUrl = URL.createObjectURL(file);
   currentVideoUrl = URL.createObjectURL(file);
 
   const vid = document.createElement('video');
   vid.preload = 'metadata';
   vid.muted = true;
-  vid.playsInline = true; // iOS 必须
+  vid.playsInline = true;
 
   let resolved = false;
 
@@ -669,7 +664,6 @@ function runSpecCheck(file){
       resEl.textContent = w+'×'+h+(resOk?' ✓':' ✗ 需要1080p');
       resEl.className = 'spec-val '+(resOk?'ok':'fail');
     } else {
-      // 手机上读不到宽高，标记为待定，不阻止上传
       resEl.textContent = '待服务器检测';
       resEl.className = 'spec-val ok';
     }
@@ -679,7 +673,6 @@ function runSpecCheck(file){
     fpsEl.className = 'spec-val ok';
 
     const durEl = document.getElementById('spec-dur');
-    const durOk = dur >= 30 || dur === 0; // 读不到时长则放行，服务器会检测
     if (dur > 0) {
       durEl.textContent = fmtSec(dur)+(dur>=30?' ✓':' ✗ 需≥30秒');
       durEl.className = 'spec-val '+(dur>=30?'ok':'fail');
@@ -688,10 +681,9 @@ function runSpecCheck(file){
       durEl.className = 'spec-val ok';
     }
 
-    // 规格仅供参考，不阻止上传
     const resActuallyFail = w > 0 && h > 0 && !resOk;
     const durActuallyFail = dur > 0 && dur < 30;
-    specCheckPassed = true; // 始终放行
+    specCheckPassed = true;
 
     const failBanner = document.getElementById('specFailBanner');
     if (resActuallyFail || durActuallyFail) {
@@ -707,9 +699,8 @@ function runSpecCheck(file){
   }
 
   vid.onloadedmetadata = applyMeta;
-  vid.onloadeddata = applyMeta; // 备用触发点
+  vid.onloadeddata = applyMeta;
 
-  // 手机兜底：3秒后如果还没触发，直接放行让服务器检测
   setTimeout(() => {
     if (!resolved) {
       resolved = true;
@@ -727,50 +718,23 @@ function runSpecCheck(file){
   }, 3000);
 
   vid.src = tempUrl;
-  vid.load(); // 手机上必须显式调用 load()
+  vid.load();
 }
 
 function fmtSec(s){s=Math.round(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
 
-// ── 最少手数配置 ──
-let minHands = 2;
-function setMinHands(val) {
-  minHands = val;
-  document.querySelectorAll('.hand-count-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.val) === val));
-  const item = document.getElementById('noHandsItem');
-  const desc = document.getElementById('handCountDesc');
-  if (val === 0) {
-    item.style.display = 'none';
-    desc.textContent = '不检测手数，任意帧均可通过';
-  } else if (val === 1) {
-    item.style.display = '';
-    document.getElementById('noHandsTag').textContent = '一票否决';
-    document.getElementById('noHandsDesc').textContent = '至少1只手必须在画面内，适合单手操作任务';
-    desc.textContent = '单手任务：抓取、移动、按压等只需一只手的操作';
-  } else {
-    item.style.display = '';
-    document.getElementById('noHandsTag').textContent = '一票否决';
-    document.getElementById('noHandsDesc').textContent = '双手必须始终在画面内，适合双手协作任务';
-    desc.textContent = '双手任务：装配、拧螺丝、需要两手配合的操作';
-  }
-}
-
-// ── 修复：MODAL_API 指向 /analyze，已移除 OPTIONS 预热请求 ──
 const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run/analyze';
 
-// ── 分析单个视频 ──
 async function analyzeOne(queueItem) {
   const f = queueItem.file;
   queueItem.status = 'running';
   renderQueueList();
 
-  // 更新队列进度条
   const updateQBar = (pct) => {
     const el = document.getElementById('qb-' + queueItem.id);
     if (el) el.style.width = pct + '%';
   };
 
-  // 主进度条
   const bar = document.getElementById('progressBar');
   const pct = document.getElementById('progressPct');
   const sub = document.getElementById('progressSub');
@@ -793,7 +757,7 @@ async function analyzeOne(queueItem) {
   try {
     const formData = new FormData();
     formData.append('file', f, f.name);
-    formData.append('min_hands', minHands.toString());
+    formData.append('min_hands', MIN_HANDS.toString());  // 统一传 1
     const resp = await fetch(MODAL_API, { method:'POST', body:formData, redirect:'follow' });
     clearInterval(fakeTimer);
     if (!resp.ok) throw new Error('服务器错误：' + resp.status);
@@ -804,7 +768,6 @@ async function analyzeOne(queueItem) {
     queueItem.status = 'done';
     renderQueueList();
 
-    // 创建视频 blob URL
     const videoUrl = URL.createObjectURL(f);
     const dur = result.duration || 0;
     const newV = {
@@ -822,7 +785,6 @@ async function analyzeOne(queueItem) {
       debugFrames: result.debugFrames || [],
     };
 
-    // 存 IndexedDB（用于刷新后播放）
     await saveVideoToDB(newV.id, f);
 
     videos.unshift(newV);
@@ -841,7 +803,6 @@ async function analyzeOne(queueItem) {
   }
 }
 
-// ── 启动队列处理 ──
 async function startAnalysis() {
   if (!uploadQueue.length) return;
   if (isProcessing) return;
@@ -861,7 +822,6 @@ async function startAnalysis() {
       if (result) lastDone = result;
     }
   } finally {
-    // 无论成功失败都重置 isProcessing
     isProcessing = false;
   }
 
@@ -872,10 +832,8 @@ async function startAnalysis() {
       ? `✅ 完成 ${doneCount} 个，❌ 失败 ${errCount} 个`
       : `✅ 全部 ${doneCount} 个视频分析完成`;
 
-  // 清空已完成/失败的队列项，为下次上传做准备
   uploadQueue = uploadQueue.filter(q => q.status === 'pending');
 
-  // 恢复按钮状态
   const btn = document.getElementById('analyzeBtn');
   if (uploadQueue.length > 0) {
     btn.disabled = false;
@@ -945,7 +903,6 @@ async function deleteVideoFromDB(id) {
   } catch(e) {}
 }
 
-// 启动时从 IndexedDB 恢复历史视频文件
 async function restoreVideosFromDB() {
   for (const v of historyRows) {
     if (!v.videoFile) {
@@ -953,7 +910,6 @@ async function restoreVideosFromDB() {
       if (file) {
         v.videoFile = file;
         v.videoUrl = URL.createObjectURL(file);
-        // 同步到 videos 数组
         if (!videos.find(x => x.id === v.id)) videos.unshift(v);
       }
     }
@@ -974,21 +930,16 @@ async function deleteHistory(id) {
   const idx = historyRows.findIndex(v => v.id === id);
   if (idx === -1) return;
   if (!confirm(`确定删除 "${historyRows[idx].name}"？`)) return;
-  // 从 IndexedDB 删视频文件
   await deleteVideoFromDB(id);
-  // 从 videos 删
   const vi = videos.findIndex(v => v.id === id);
   if (vi !== -1) videos.splice(vi, 1);
-  // 从 historyRows 删
   historyRows.splice(idx, 1);
-  // 更新 localStorage
   try {
     const ts = historyRows.map(h => ({...h, videoFile:null, videoUrl:null, debugFrames:[]}));
     localStorage.setItem('vidscore_history', JSON.stringify(ts));
   } catch(e) {}
   renderHistory();
   renderVideoList();
-  // 如果当前正在查看这个视频，清空详情
   if (selectedVideo && selectedVideo.id === id) {
     selectedVideo = null;
     document.getElementById('detailPanel').innerHTML = '<div class="empty-state">← 选择左侧视频查看详细报告</div>';
@@ -1005,14 +956,30 @@ async function clearHistory(){
   renderVideoList();
 }
 
+// 评分结论文案 - 对齐 DeepReach 风格
+function scoreVerdict(score, rejected) {
+  if (rejected) return '拒收';
+  if (score >= 80) return '优秀';
+  if (score >= 60) return '可用';
+  if (score >= 40) return '待改进';
+  return '建议重拍';
+}
+
+function scoreVerdictClass(score, rejected) {
+  if (rejected) return 'danger';
+  if (score >= 60) return 'ok';
+  if (score >= 40) return 'warn';
+  return 'danger';
+}
+
 function renderHistory(){
   document.getElementById('historyBody').innerHTML=historyRows.map(v=>`
     <tr onclick="showView('feedback');setTimeout(()=>{const vd=videos.find(x=>x.id===${v.id})||historyRows.find(x=>x.id===${v.id});selectVideo(vd);},50)" style="cursor:pointer">
       <td style="font-weight:500">${v.name}</td><td>${v.date}</td><td>${v.duration}</td>
       <td style="color:${v.spec.ok?'var(--accent)':'var(--danger)'}">${v.spec.res||'—'}</td>
-      <td style="color:${v.rejected?'var(--danger)':scoreColor(v.score)};font-weight:600">${v.rejected?'拒绝':v.score}</td>
+      <td style="color:${v.rejected?'var(--danger)':scoreColor(v.score)};font-weight:600">${v.rejected?'拒收':v.score}</td>
       <td>${v.issues.length?v.issues[0].name:'—'}</td>
-      <td><span class="chip ${v.rejected?'danger':v.score>=70?'ok':v.score>=40?'warn':'danger'}">${v.rejected?'不合格':v.score>=70?'合格':v.score>=40?'待改进':'不合格'}</span></td>
+      <td><span class="chip ${scoreVerdictClass(v.score, v.rejected)}">${scoreVerdict(v.score, v.rejected)}</span></td>
       <td onclick="event.stopPropagation()">
         <button onclick="deleteHistory(${v.id})" style="padding:4px 10px;border-radius:5px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:11px;cursor:pointer;font-family:var(--sans);white-space:nowrap">删除</button>
       </td>
@@ -1031,22 +998,18 @@ function showView(name){
     document.getElementById('specFailBanner').classList.remove('active');
 
     if(isProcessing) {
-      // 正在分析：恢复进度条显示，不清空队列
       document.getElementById('progressWrap').classList.add('active');
       document.getElementById('queuePanel').style.display='';
       renderQueueList();
-      // 按钮显示当前状态
       document.getElementById('analyzeBtn').disabled=true;
       document.getElementById('analyzeBtn').textContent='分析进行中…';
     } else if(uploadQueue.length > 0) {
-      // 有队列但未开始：恢复队列显示
       document.getElementById('progressWrap').classList.remove('active');
       document.getElementById('queuePanel').style.display='';
       renderQueueList();
       document.getElementById('analyzeBtn').disabled=false;
       document.getElementById('analyzeBtn').textContent=`开始分析 ${uploadQueue.length} 个视频 →`;
     } else {
-      // 空闲：完全重置
       document.getElementById('progressWrap').classList.remove('active');
       document.getElementById('queuePanel').style.display='none';
       document.getElementById('queueList').innerHTML='';
@@ -1056,7 +1019,6 @@ function showView(name){
       document.getElementById('progressBar').style.background='var(--accent)';
     }
 
-    // 这些始终重置（不影响分析状态）
     uploadedFile=null;specCheckPassed=false;
     document.getElementById('dropLabel').textContent='拖拽视频到这里';
     document.getElementById('dropSub').textContent='或点击选择文件 · 系统自动验证规格';
@@ -1071,9 +1033,9 @@ function showView(name){
 
 function renderVideoList(){
   const list=document.getElementById('videoList'),header=list.querySelector('.list-header').outerHTML;
-  // 左侧列表显示所有历史（含本次会话 + localStorage 加载的）
   const allVids=historyRows;
-  const total=allVids.length,failed=allVids.filter(v=>v.rejected||v.score<70).length;
+  const total=allVids.length;
+  const usable=allVids.filter(v=>!v.rejected && v.score>=40).length;
   list.innerHTML=header+(allVids.length===0
     ? '<div class="empty-state" style="padding:40px;font-size:13px">暂无记录，请先上传视频</div>'
     : allVids.map(v=>{
@@ -1087,34 +1049,43 @@ function renderVideoList(){
           <div class="score-badge ${v.rejected?'reject':scoreClass(v.score)}">${v.rejected?'✗':v.score}</div>
         </div>`;
       }).join(''));
-  document.getElementById('listSubtitle').textContent=`共${total}个，${failed}个不合格`;
+  document.getElementById('listSubtitle').textContent=`共${total}个，${usable}个可用`;
 }
 
-function scoreClass(s){return s>=70?'ok':s>=40?'warn':'fail';}
-function scoreColor(s){return s>=70?'var(--accent)':s>=40?'var(--warn)':'var(--danger)';}
+function scoreClass(s){return s>=60?'ok':s>=40?'warn':'fail';}
+function scoreColor(s){return s>=60?'var(--accent)':s>=40?'var(--warn)':'var(--danger)';}
 
 function selectVideo(v){
   if(!v)return;selectedVideo=v;renderVideoList();
-  // 始终用 videoFile 创建新 URL，避免旧 blob URL 失效
   if(v.videoFile){
     try{if(v.videoUrl)URL.revokeObjectURL(v.videoUrl);}catch(e){}
     v.videoUrl=URL.createObjectURL(v.videoFile);
   }
   const dur=v.totalDuration||0,dropped=parseFloat(v.totalDrop)||0,pctDrop=dur>0?Math.min(100,Math.round(dropped/dur*100)):0;
   const hasFatal=v.issues.some(i=>i.fatal),specFail=v.spec&&!v.spec.ok;
+  const usableSec = Math.max(0, dur - dropped);
   const segs=v.issues.flatMap(iss=>(iss.segments||[]).map(([s,e])=>({s,e,sev:iss.severity,name:iss.name,fatal:iss.fatal}))).sort((a,b)=>a.s-b.s);
+  const totalSegCount = segs.length;
+
   const segHtml=segs.map(sg=>{
     const left=(sg.s/dur*100).toFixed(2),width=Math.max(0.4,(sg.e-sg.s)/dur*100).toFixed(2);
     const color=sg.fatal?'var(--danger)':sg.sev==='warn'?'var(--warn)':'var(--info)';
     return `<div class="tl-seg" style="left:${left}%;width:${width}%;background:${color}" title="${sg.name} ${fmtSec(sg.s)}–${fmtSec(sg.e)}"></div>`;
   }).join('');
-  const issHtml=v.issues.map(iss=>`
+
+  const issHtml=v.issues.map(iss=>{
+    const label = iss.fatal
+      ? '<span class="fatal-label">REJECT</span>'
+      : '<span class="drop-label">DROP</span>';
+    return `
     <div class="issue-row ${iss.fatal?'fatal-row':''}">
       <div class="issue-dot ${iss.severity}"></div><div class="issue-name">${iss.name}</div>
-      ${iss.fatal?'<span class="fatal-label">一票否决</span>':''}
+      ${label}
       <div class="issue-time">${(iss.segments||[]).map(([s,e])=>fmtSec(s)+'–'+fmtSec(e)).slice(0,4).join('  ')}</div>
       <div class="issue-duration">${iss.duration}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
   const specHtml=`
     <div class="spec-card ${v.spec.ok?'pass':'fail-card'}"><span class="spec-icon">${v.spec.ok?'✅':'❌'}</span>
       <div><div class="spec-card-label">分辨率</div><div class="spec-card-val ${v.spec.ok?'ok':'fail'}">${v.spec.res||'未知'}</div></div></div>
@@ -1124,30 +1095,39 @@ function selectVideo(v){
       <div><div class="spec-card-label">时长</div><div class="spec-card-val ok">${v.duration}</div></div></div>
     <div class="spec-card pass"><span class="spec-icon">✅</span>
       <div><div class="spec-card-label">格式</div><div class="spec-card-val ok">MP4 / H.264</div></div></div>`;
+
   const rejectHtml=(hasFatal||specFail)?`<div class="reject-banner"><span style="font-size:18px;flex-shrink:0">⛔</span><div>
-    <strong>视频不合格 — 必须重拍</strong><br>
-    ${specFail?v.spec.failReason+'。':''}${hasFatal?'触发一票否决规则：'+v.issues.filter(i=>i.fatal).map(i=>i.name).join('、')+'。':''}</div></div>`:'';
+    <strong>整段拒收 — 必须重拍</strong><br>
+    ${specFail?v.spec.failReason+'。':''}${hasFatal?'触发 REJECT 规则：'+v.issues.filter(i=>i.fatal).map(i=>i.name).join('、')+'（隐私敏感数据）。':''}</div></div>`:'';
+
   const playerHtml=v.videoUrl?`<div class="video-wrapper">
     <video id="detailVideo" controls src="${v.videoUrl}"></video>
     <div class="video-overlay" id="videoOverlay"></div>
   </div>`
     :`<div class="no-video-placeholder"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg> 演示数据，无视频文件</div>`;
+
+  const verdict = scoreVerdict(v.score, v.rejected);
+  const verdictClass = scoreVerdictClass(v.score, v.rejected);
+
   document.getElementById('detailPanel').innerHTML=`
     <div class="detail-title">质检报告</div><div class="detail-name">${v.name}</div>
     ${rejectHtml}
     <div class="score-summary">
-      <div class="score-card"><div class="sc-label">综合评分</div><div class="sc-value ${v.rejected?'fail':scoreClass(v.score)}">${v.rejected?'拒绝':v.score}</div><div class="sc-sub">${v.rejected?'整段无效':v.score>=70?'合格提交':v.score>=40?'待改进':'不合格'}</div></div>
-      <div class="score-card"><div class="sc-label">问题时长</div><div class="sc-value ${pctDrop>30?'fail':'warn'}">${v.totalDrop}s</div><div class="sc-sub">占 ${pctDrop}% 总时长</div></div>
-      <div class="score-card"><div class="sc-label">致命问题</div><div class="sc-value ${hasFatal?'fail':'ok'}">${v.issues.filter(i=>i.fatal).length}</div><div class="sc-sub">${hasFatal?'一票否决':'无致命问题'}</div></div>
-      <div class="score-card"><div class="sc-label">问题片段</div><div class="sc-value warn">${segs.length}</div><div class="sc-sub">${v.issues.length} 类问题</div></div>
+      <div class="score-card"><div class="sc-label">综合评分</div><div class="sc-value ${v.rejected?'fail':scoreClass(v.score)}">${v.rejected?'拒收':v.score}</div><div class="sc-sub">${verdict}</div></div>
+      <div class="score-card"><div class="sc-label">可用时长</div><div class="sc-value ${usableSec/dur>=0.7?'ok':'warn'}">${fmtSec(usableSec)}</div><div class="sc-sub">${dur>0?Math.round(usableSec/dur*100):0}% / ${v.duration}</div></div>
+      <div class="score-card"><div class="sc-label">DROP 时长</div><div class="sc-value ${pctDrop>30?'fail':'warn'}">${v.totalDrop}s</div><div class="sc-sub">占 ${pctDrop}% 总时长</div></div>
+      <div class="score-card"><div class="sc-label">DROP 片段</div><div class="sc-value warn">${totalSegCount}</div><div class="sc-sub">${v.issues.length} 类问题</div></div>
     </div>
     <div style="margin-bottom:22px"><div class="section-title">视频播放 · 问题时间轴</div>
       <div class="video-player-area">${playerHtml}
         <div class="timeline-wrap"><div class="tl-bar">${segHtml}</div>
           <div class="tl-labels"><span>0:00</span><span>${fmtSec(Math.floor(dur/2))}</span><span>${v.duration}</span></div>
+          <div class="tl-stats">
+            <strong>${totalSegCount} dropped ranges</strong> · <strong>${v.totalDrop}s total</strong> · ${pctDrop}% of video
+          </div>
           <div class="tl-legend">
-            <div class="tl-legend-item"><div class="tl-legend-dot" style="background:var(--danger)"></div>一票否决问题</div>
-            <div class="tl-legend-item"><div class="tl-legend-dot" style="background:var(--warn)"></div>扣分问题</div>
+            ${hasFatal?'<div class="tl-legend-item"><div class="tl-legend-dot" style="background:var(--danger)"></div>REJECT（拒收）</div>':''}
+            <div class="tl-legend-item"><div class="tl-legend-dot" style="background:var(--warn)"></div>DROP（局部丢弃）</div>
             <div class="tl-legend-item"><div class="tl-legend-dot" style="background:var(--info)"></div>轻微问题</div>
           </div>
         </div>
@@ -1159,17 +1139,19 @@ function selectVideo(v){
       </div>
     </div>
     <div style="margin-bottom:22px"><div class="section-title">视频规格检查</div><div class="spec-grid">${specHtml}</div></div>
-    ${v.issues.length?`<div style="margin-bottom:22px"><div class="section-title">检测到的问题（按严重程度）</div><div class="issues-list">${issHtml}</div></div>`:''}
+    ${v.issues.length?`<div style="margin-bottom:22px"><div class="section-title">检测到的问题</div><div class="issues-list">${issHtml}</div></div>`:''}
     <div style="margin-bottom:32px"><div class="section-title">AI 分析与改进建议</div>
       <div class="ai-chat"><p class="ai-msg">${v.aiSummary}</p>
-        <div class="ai-chips">${v.issues.map(i=>`<span class="chip ${i.fatal?'danger':i.severity==='warn'?'warn':'info'}">${i.name} · ${i.duration}</span>`).join('')}</div>
+        <div class="ai-chips">${v.issues.map(i=>{
+          const cls = i.fatal?'danger':i.severity==='warn'?'warn':'info';
+          return `<span class="chip ${cls}">${i.name} · ${i.duration}</span>`;
+        }).join('')}</div>
       </div>
       ${renderDebugFrames(v.debugFrames, v.issues)}
     </div>
     ${v.videoFile ? renderTrajectorySection(v) : ''}`;
-  // 设置实时覆盖层
+
   if(v.videoUrl) setTimeout(()=>setupVideoOverlay(v), 100);
-  // 初始化轨迹滑块
   if(v.videoFile) setTimeout(()=>{
     trajStartSec = 0;
     trajEndSec = Math.min(30, v.totalDuration || 30);
@@ -1191,11 +1173,11 @@ const HAND_CONNECTIONS = [
   [0,17],[17,18],[18,19],[19,20],
   [5,9],[9,13],[13,17],
 ];
-const HAND_COLORS = ['#00e5a0','#4da6ff']; // 左手绿，右手蓝
+const HAND_COLORS = ['#00e5a0','#4da6ff'];
 
-let trajData = null;       // 后端返回的逐帧数据
-let trajVideo = null;      // 当前视频
-let trajRAF = null;        // requestAnimationFrame handle
+let trajData = null;
+let trajVideo = null;
+let trajRAF = null;
 let trajPlaying = false;
 let trajCurrentFrame = 0;
 let trajStartSec = 0;
@@ -1212,7 +1194,6 @@ function renderTrajectorySection(v) {
       选取片段后点击"生成轨迹"，逐帧播放并叠加手部骨架和运动轨迹
     </div>
 
-    <!-- 片段选择器 -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px">
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">选取片段</div>
       <div class="traj-range-wrap" id="trajRangeWrap" style="cursor:pointer">
@@ -1239,7 +1220,6 @@ function renderTrajectorySection(v) {
       </div>
     </div>
 
-    <!-- Canvas 播放器 -->
     <div class="traj-canvas-wrap" id="trajCanvasWrap">
       <canvas id="trajCanvas"></canvas>
       <div class="traj-playbar">
@@ -1267,7 +1247,6 @@ function initTrajSliders(dur) {
   if (!wrap || !hs || !he) return;
 
   function updateBar() {
-    const ww = wrap.offsetWidth;
     const sp = (trajStartSec / dur) * 100;
     const ep = (trajEndSec / dur) * 100;
     bar.style.left = sp + '%';
@@ -1302,7 +1281,6 @@ function initTrajSliders(dur) {
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
-    // 触摸支持
     handle.addEventListener('touchstart', e => {
       e.preventDefault();
       const onMove = ev => {
@@ -1329,7 +1307,6 @@ function initTrajSliders(dur) {
   makeDrag(hs, true);
   makeDrag(he, false);
 
-  // 数字输入框同步
   document.getElementById('trajStartInput').addEventListener('input', e => {
     trajStartSec = Math.max(0, Math.min(parseFloat(e.target.value)||0, trajEndSec-1));
     updateBar();
@@ -1371,7 +1348,6 @@ async function generateTrajectory() {
     btn.textContent = '重新生成';
     btn.disabled = false;
 
-    // 初始化 Canvas 播放器
     initTrajPlayer(v);
 
   } catch(err) {
@@ -1387,7 +1363,6 @@ function initTrajPlayer(v) {
   const canvas = document.getElementById('trajCanvas');
   wrap.classList.add('active');
 
-  // 用视频文件创建 video 元素用于逐帧绘制
   if (trajVideo) { trajVideo.pause(); trajVideo.src = ''; }
   trajVideo = document.createElement('video');
   trajVideo.src = URL.createObjectURL(v.videoFile);
@@ -1400,15 +1375,13 @@ function initTrajPlayer(v) {
     trajCurrentFrame = 0;
     trajPlaying = false;
     document.getElementById('trajPlayBtn').textContent = '▶ 播放';
-    // 跳到片段开始
     trajVideo.currentTime = trajStartSec;
     drawTrajFrame();
   };
 }
 
-// 手腕轨迹历史（用于画运动轨迹线）
-const wristTrail = [[], []]; // 最多2只手的手腕轨迹
-const TRAIL_LENGTH = 30;     // 保留最近30帧轨迹
+const wristTrail = [[], []];
+const TRAIL_LENGTH = 30;
 
 function drawTrajFrame() {
   const canvas = document.getElementById('trajCanvas');
@@ -1416,27 +1389,23 @@ function drawTrajFrame() {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
 
-  // 找当前时间对应的帧数据
   const t = trajVideo.currentTime;
   const frameData = trajData.frames.reduce((closest, f) =>
     Math.abs(f.t - t) < Math.abs(closest.t - t) ? f : closest,
     trajData.frames[0]
   );
 
-  // 画视频帧
   ctx.drawImage(trajVideo, 0, 0, W, H);
 
   if (frameData && frameData.hands.length > 0) {
-    // 更新手腕轨迹
     frameData.hands.forEach((hand, hi) => {
       if (hi < 2) {
-        const wrist = hand.pts[0]; // 关键点0是手腕
+        const wrist = hand.pts[0];
         wristTrail[hi].push([wrist[0] * W, wrist[1] * H]);
         if (wristTrail[hi].length > TRAIL_LENGTH) wristTrail[hi].shift();
       }
     });
 
-    // 画手腕运动轨迹（渐隐线条）
     for (let hi = 0; hi < 2; hi++) {
       const trail = wristTrail[hi];
       if (trail.length < 2) continue;
@@ -1454,12 +1423,10 @@ function drawTrajFrame() {
       }
     }
 
-    // 画骨架
     frameData.hands.forEach((hand, hi) => {
       const color = HAND_COLORS[hi % HAND_COLORS.length];
       const pts = hand.pts.map(p => [p[0]*W, p[1]*H]);
 
-      // 连线
       ctx.lineWidth = 2;
       ctx.strokeStyle = color;
       HAND_CONNECTIONS.forEach(([a, b]) => {
@@ -1469,9 +1436,8 @@ function drawTrajFrame() {
         ctx.stroke();
       });
 
-      // 关键点
       pts.forEach((pt, pi) => {
-        const r = [4,8,12,16,20].includes(pi) ? 6 : 4; // 指尖大点
+        const r = [4,8,12,16,20].includes(pi) ? 6 : 4;
         ctx.beginPath();
         ctx.arc(pt[0], pt[1], r, 0, Math.PI*2);
         ctx.fillStyle = color;
@@ -1481,7 +1447,6 @@ function drawTrajFrame() {
         ctx.stroke();
       });
 
-      // 置信度标签（手腕旁）
       const wrist = pts[0];
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(wrist[0]+6, wrist[1]-10, 50, 16);
@@ -1490,9 +1455,7 @@ function drawTrajFrame() {
       ctx.fillText(`${hand.side} ${Math.round(hand.conf*100)}%`, wrist[0]+8, wrist[1]+3);
     });
   } else {
-    // 没检测到手，清空轨迹
     wristTrail[0] = []; wristTrail[1] = [];
-    // 画"未检测到手"提示
     ctx.fillStyle = 'rgba(255,77,109,0.7)';
     ctx.fillRect(10, 10, 120, 24);
     ctx.fillStyle = '#fff';
@@ -1500,7 +1463,6 @@ function drawTrajFrame() {
     ctx.fillText('未检测到手部', 16, 26);
   }
 
-  // 更新进度条
   const progress = (t - trajStartSec) / (trajEndSec - trajStartSec);
   const fill = document.getElementById('trajProgressFill');
   if (fill) fill.style.width = Math.max(0, Math.min(100, progress*100)) + '%';
@@ -1517,7 +1479,6 @@ function toggleTrajPlay() {
     document.getElementById('trajPlayBtn').textContent = '▶ 播放';
   } else {
     trajPlaying = true;
-    // 如果到了结尾，从头开始
     if (trajVideo.currentTime >= trajEndSec - 0.1) {
       trajVideo.currentTime = trajStartSec;
       wristTrail[0] = []; wristTrail[1] = [];
@@ -1561,15 +1522,9 @@ function downloadTrajFrame() {
 
 
 function renderDebugFrames(frames, issues){
-  // frames 现在是带元数据的对象数组：{b64, time, issueId, issueName, severity}
-  // 兼容旧格式（纯 base64 字符串数组）
   if(!frames||!frames.length)return '';
   const isOldFormat = typeof frames[0] === 'string';
-  if(isOldFormat){
-    // 旧格式：只有图片没有问题标注，不展示（等新后端返回）
-    return '';
-  }
-  // 新格式：每帧有问题标注
+  if(isOldFormat) return '';
   if(!frames.length)return '';
   const colorMap={danger:'rgba(255,77,109,0.85)',warn:'rgba(255,178,63,0.85)',info:'rgba(77,166,255,0.85)'};
   let html='<div style="margin-bottom:32px"><div class="section-title">问题关键帧（每类问题各取一帧）</div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px">';
@@ -1590,13 +1545,11 @@ function setSpeed(s){
   document.querySelectorAll('.speed-btn').forEach(b=>b.classList.toggle('active',b.textContent===s+'x'));
 }
 
-// 实时问题覆盖层
 function setupVideoOverlay(v) {
   const vid = document.getElementById('detailVideo');
   const overlay = document.getElementById('videoOverlay');
   if (!vid || !overlay) return;
 
-  // 移除旧监听器，防止重复绑定
   if (vid._overlayHandler) {
     vid.removeEventListener('timeupdate', vid._overlayHandler);
   }
@@ -1607,13 +1560,14 @@ function setupVideoOverlay(v) {
       const inSeg = (iss.segments || []).some(([s, e]) => t >= s && t <= e);
       if (inSeg) active.push(iss);
     });
-    overlay.innerHTML = active.length === 0 ? '' : active.map(iss =>
-      `<span class="overlay-tag ${iss.severity}">⚠ ${iss.name}</span>`
-    ).join('');
+    // 对齐 DeepReach 风格:DROP / REJECT 标签 + 问题名
+    overlay.innerHTML = active.length === 0 ? '' : active.map(iss => {
+      const pill = iss.fatal ? 'REJECT' : 'DROP';
+      return `<span class="overlay-tag ${iss.severity}"><span class="drop-pill">${pill}</span> ${iss.name}</span>`;
+    }).join('');
   };
   vid.addEventListener('timeupdate', vid._overlayHandler);
 
-  // 点击时间轴跳转
   document.querySelectorAll('.tl-seg').forEach(seg => {
     seg.addEventListener('click', () => {
       const title = seg.getAttribute('title') || '';
