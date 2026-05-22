@@ -912,7 +912,7 @@ function addToHistory(v,init){
   if(!init)renderHistory();
 }
 
-async async function deleteHistory(id) {
+async function deleteHistory(id) {
   const idx = historyRows.findIndex(v => v.id === id);
   if (idx === -1) return;
   if (!confirm(`确定删除 "${historyRows[idx].name}"？`)) return;
