@@ -493,9 +493,8 @@
 </div>
 
 <div class="view" id="view-history">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+  <div style="margin-bottom:6px">
     <h1>上传历史</h1>
-    <button onclick="clearHistory()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:12px;cursor:pointer;font-family:var(--sans)">清空历史</button>
   </div>
   <p class="page-sub">所有提交记录，点击行查看完整报告和视频</p>
   <table class="history-table">
@@ -899,9 +898,33 @@ function addToHistory(v,init){
   if(!init)renderHistory();
 }
 
+async async function deleteHistory(id) {
+  const idx = historyRows.findIndex(v => v.id === id);
+  if (idx === -1) return;
+  if (!confirm(`确定删除 "${historyRows[idx].name}"？`)) return;
+  // 从 IndexedDB 删视频文件
+  await deleteVideoFromDB(id);
+  // 从 videos 删
+  const vi = videos.findIndex(v => v.id === id);
+  if (vi !== -1) videos.splice(vi, 1);
+  // 从 historyRows 删
+  historyRows.splice(idx, 1);
+  // 更新 localStorage
+  try {
+    const ts = historyRows.map(h => ({...h, videoFile:null, videoUrl:null, debugFrames:[]}));
+    localStorage.setItem('vidscore_history', JSON.stringify(ts));
+  } catch(e) {}
+  renderHistory();
+  renderVideoList();
+  // 如果当前正在查看这个视频，清空详情
+  if (selectedVideo && selectedVideo.id === id) {
+    selectedVideo = null;
+    document.getElementById('detailPanel').innerHTML = '<div class="empty-state">← 选择左侧视频查看详细报告</div>';
+  }
+}
+
 async function clearHistory(){
   if(!confirm('确定清空所有历史记录？'))return;
-  // 清 IndexedDB 里的视频
   for(const v of historyRows){ await deleteVideoFromDB(v.id); }
   historyRows.length=0;
   videos.length=0;
@@ -918,6 +941,9 @@ function renderHistory(){
       <td style="color:${v.rejected?'var(--danger)':scoreColor(v.score)};font-weight:600">${v.rejected?'拒绝':v.score}</td>
       <td>${v.issues.length?v.issues[0].name:'—'}</td>
       <td><span class="chip ${v.rejected?'danger':v.score>=70?'ok':v.score>=40?'warn':'danger'}">${v.rejected?'不合格':v.score>=70?'合格':v.score>=40?'待改进':'不合格'}</span></td>
+      <td onclick="event.stopPropagation()">
+        <button onclick="deleteHistory(${v.id})" style="padding:4px 10px;border-radius:5px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:11px;cursor:pointer;font-family:var(--sans);white-space:nowrap">删除</button>
+      </td>
     </tr>`).join('');
 }
 renderHistory();
