@@ -504,35 +504,103 @@ function handleFile(f){
 function toggleCheck(el){if(!el.classList.contains('fatal'))el.classList.toggle('selected');}
 
 function runSpecCheck(file){
-  const vid=document.createElement('video');
-  const tempUrl=URL.createObjectURL(file);
-  currentVideoUrl=URL.createObjectURL(file); // 保留一份给播放用
-  vid.src=tempUrl; vid.preload='metadata';
   const fmt=file.type, fmtEl=document.getElementById('spec-fmt');
   if(fmt.startsWith('video/')){fmtEl.textContent=fmt.split('/')[1].toUpperCase()+' ✓';fmtEl.className='spec-val ok';}
   else{fmtEl.textContent=fmt+' ✗';fmtEl.className='spec-val fail';}
-  vid.onloadedmetadata=()=>{
-    const w=vid.videoWidth,h=vid.videoHeight,dur=vid.duration;
-    const resEl=document.getElementById('spec-res'),resOk=h>=1080;
-    resEl.textContent=w+'×'+h+(resOk?' ✓':' ✗ 需要1080p');resEl.className='spec-val '+(resOk?'ok':'fail');
-    const fpsEl=document.getElementById('spec-fps');
-    fpsEl.textContent='≈30fps（上传后精确检测）';fpsEl.className='spec-val ok';
-    const durEl=document.getElementById('spec-dur'),durOk=dur>=30;
-    durEl.textContent=fmtSec(dur)+(durOk?' ✓':' ✗ 需≥30秒');durEl.className='spec-val '+(durOk?'ok':'fail');
-    specCheckPassed=resOk&&durOk;
-    const failBanner=document.getElementById('specFailBanner'),btn=document.getElementById('analyzeBtn');
-    if(!specCheckPassed){
-      const r=[];
-      if(!resOk)r.push('分辨率 '+w+'×'+h+'（需要 1920×1080）');
-      if(!durOk)r.push('时长 '+fmtSec(dur)+'（需要 ≥ 30秒）');
-      failBanner.innerHTML='⛔ 视频规格不合格，无法提交：'+r.join('；')+'。请重新录制后再上传。';
-      failBanner.classList.add('active');btn.disabled=true;btn.textContent='规格不合格，无法分析';
+
+  // 创建两个 URL：一个用于规格检测，一个保留给播放
+  const tempUrl = URL.createObjectURL(file);
+  currentVideoUrl = URL.createObjectURL(file);
+
+  const vid = document.createElement('video');
+  vid.preload = 'metadata';
+  vid.muted = true;
+  vid.playsInline = true; // iOS 必须
+
+  let resolved = false;
+
+  function applyMeta() {
+    if (resolved) return;
+    resolved = true;
+
+    const w = vid.videoWidth || 0;
+    const h = vid.videoHeight || 0;
+    const dur = isFinite(vid.duration) ? vid.duration : 0;
+
+    const resEl = document.getElementById('spec-res');
+    const resOk = h >= 1080;
+    if (w > 0 && h > 0) {
+      resEl.textContent = w+'×'+h+(resOk?' ✓':' ✗ 需要1080p');
+      resEl.className = 'spec-val '+(resOk?'ok':'fail');
     } else {
-      failBanner.classList.remove('active');btn.disabled=false;btn.textContent='开始AI质检分析 →';
-      document.getElementById('dropSub').textContent=(uploadedFile.size/1024/1024).toFixed(1)+' MB · 规格检查通过 ✓';
+      // 手机上读不到宽高，标记为待定，不阻止上传
+      resEl.textContent = '待服务器检测';
+      resEl.className = 'spec-val ok';
     }
-    URL.revokeObjectURL(tempUrl); // 只撤销临时URL，currentVideoUrl保留
-  };
+
+    const fpsEl = document.getElementById('spec-fps');
+    fpsEl.textContent = '≈30fps（上传后精确检测）';
+    fpsEl.className = 'spec-val ok';
+
+    const durEl = document.getElementById('spec-dur');
+    const durOk = dur >= 30 || dur === 0; // 读不到时长则放行，服务器会检测
+    if (dur > 0) {
+      durEl.textContent = fmtSec(dur)+(dur>=30?' ✓':' ✗ 需≥30秒');
+      durEl.className = 'spec-val '+(dur>=30?'ok':'fail');
+    } else {
+      durEl.textContent = '待服务器检测';
+      durEl.className = 'spec-val ok';
+    }
+
+    // 只有明确读到且不合格时才阻止
+    const resActuallyFail = w > 0 && h > 0 && !resOk;
+    const durActuallyFail = dur > 0 && dur < 30;
+    specCheckPassed = !resActuallyFail && !durActuallyFail;
+
+    const failBanner = document.getElementById('specFailBanner');
+    const btn = document.getElementById('analyzeBtn');
+    if (!specCheckPassed) {
+      const r = [];
+      if (resActuallyFail) r.push('分辨率 '+w+'×'+h+'（需要 1920×1080）');
+      if (durActuallyFail) r.push('时长 '+fmtSec(dur)+'（需要 ≥ 30秒）');
+      failBanner.innerHTML = '⛔ 视频规格不合格，无法提交：'+r.join('；')+'。请重新录制后再上传。';
+      failBanner.classList.add('active');
+      btn.disabled = true;
+      btn.textContent = '规格不合格，无法分析';
+    } else {
+      failBanner.classList.remove('active');
+      btn.disabled = false;
+      btn.textContent = '开始AI质检分析 →';
+      document.getElementById('dropSub').textContent = (uploadedFile.size/1024/1024).toFixed(1)+' MB · 规格检查通过 ✓';
+    }
+    URL.revokeObjectURL(tempUrl);
+  }
+
+  vid.onloadedmetadata = applyMeta;
+  vid.onloadeddata = applyMeta; // 备用触发点
+
+  // 手机兜底：3秒后如果还没触发，直接放行让服务器检测
+  setTimeout(() => {
+    if (!resolved) {
+      resolved = true;
+      URL.revokeObjectURL(tempUrl);
+      document.getElementById('spec-res').textContent = '待服务器检测';
+      document.getElementById('spec-res').className = 'spec-val ok';
+      document.getElementById('spec-fps').textContent = '待服务器检测';
+      document.getElementById('spec-fps').className = 'spec-val ok';
+      document.getElementById('spec-dur').textContent = '待服务器检测';
+      document.getElementById('spec-dur').className = 'spec-val ok';
+      specCheckPassed = true;
+      document.getElementById('specFailBanner').classList.remove('active');
+      const btn = document.getElementById('analyzeBtn');
+      btn.disabled = false;
+      btn.textContent = '开始AI质检分析 →';
+      document.getElementById('dropSub').textContent = (uploadedFile.size/1024/1024).toFixed(1)+' MB · 规格将由服务器检测 ✓';
+    }
+  }, 3000);
+
+  vid.src = tempUrl;
+  vid.load(); // 手机上必须显式调用 load()
 }
 
 function fmtSec(s){s=Math.round(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
