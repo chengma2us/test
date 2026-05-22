@@ -814,6 +814,20 @@ async function startAnalysis() {
       ? `✅ 完成 ${doneCount} 个，❌ 失败 ${errCount} 个`
       : `✅ 全部 ${doneCount} 个视频分析完成`;
 
+  // 清空已完成/失败的队列项，为下次上传做准备
+  uploadQueue = uploadQueue.filter(q => q.status === 'pending');
+
+  // 恢复按钮状态
+  const btn = document.getElementById('analyzeBtn');
+  if (uploadQueue.length > 0) {
+    btn.disabled = false;
+    btn.textContent = `开始分析 ${uploadQueue.length} 个视频 →`;
+  } else {
+    btn.disabled = true;
+    btn.textContent = '选择视频后开始分析';
+    document.getElementById('queuePanel').style.display = 'none';
+  }
+
   if (lastDone) {
     setTimeout(() => {
       showView('feedback');
