@@ -2529,7 +2529,7 @@ const _CDN = 'https://cdn.jsdelivr.net/npm/';
 // ESM 入口路径(注意是 esm 不是 umd)
 const FFMPEG_ESM = _CDN + _PKG_FF + '@' + _VER_FF + '/dist/esm/index.js';
 const FFMPEG_UTIL_ESM = _CDN + _PKG_FU + '@' + _VER_FU + '/dist/esm/index.js';
-const FFMPEG_CORE_BASE = _CDN + _PKG_FC + '@' + _VER_FC + '/dist/umd';  // core 仍用 umd(被 ffmpeg 加载,不是被浏览器加载)
+const FFMPEG_CORE_BASE = _CDN + _PKG_FC + '@' + _VER_FC + '/dist/esm';  // core 也必须用 esm! worker 是 module 类型,内部用 import() 加载 core(不是 importScripts)
 
 // 通用工具:fetch 任意 URL,转成 same-origin 的 blob URL,从而绕过 COEP
 async function _toBlobUrl(url, mime) {
@@ -2627,16 +2627,18 @@ async function trimLoadFFmpeg(progressLabel) {
 
   const FFmpeg = ffmpegMod.FFmpeg;
   const ffmpeg = new FFmpeg();
-  ffmpeg.on('log', ({ message }) => { /* console.debug('[ffmpeg]', message); */ });
+  // 临时开启日志,排错完成后可关掉
+  ffmpeg.on('log', ({ message }) => { console.log('[ffmpeg]', message); });
 
   // 3) 三个关键文件都本地化为 blob URL:
-  //    - coreURL/wasmURL: ffmpeg 核心引擎(被 worker 加载)
+  //    - coreURL: ffmpeg 核心引擎(ESM 格式,被 worker 通过 import() 动态加载)
+  //    - wasmURL: ffmpeg-core 的 wasm 二进制
   //    - classWorkerURL: ffmpeg 主类自己生成的 Worker 的脚本
   //      Worker 构造器要求 same-origin,所以必须做成 blob URL
   //      worker.js 内部还有相对 import,需要重写
   const FFMPEG_WORKER_URL = _CDN + _PKG_FF + '@' + _VER_FF + '/dist/esm/worker.js';
   const [coreURL, wasmURL, classWorkerURL] = await Promise.all([
-    _toBlobUrl(FFMPEG_CORE_BASE + '/ffmpeg-core.js', 'text/javascript'),
+    _toBlobUrlWithImportRewrite(FFMPEG_CORE_BASE + '/ffmpeg-core.js', 'text/javascript'),
     _toBlobUrl(FFMPEG_CORE_BASE + '/ffmpeg-core.wasm', 'application/wasm'),
     _toBlobUrlWithImportRewrite(FFMPEG_WORKER_URL, 'text/javascript'),
   ]);
