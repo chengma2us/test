@@ -1353,7 +1353,8 @@ function showView(name){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const navIdx = {upload:0, feedback:1, trim:2, history:3}[name];
   if (navIdx !== undefined) {
-    document.querySelectorAll('.nav-item')[navIdx].classList.add('active');
+    const navItems = document.querySelectorAll('.nav-item');
+    if (navItems[navIdx]) navItems[navIdx].classList.add('active');
   }
   if(name==='upload'){
     document.getElementById('configPanel').style.display='';
@@ -2348,14 +2349,41 @@ function trimHandleFile(file) {
 
   const v = document.getElementById('trimVideo');
   v.src = trimState.url;
-  v.onloadedmetadata = () => {
-    trimState.duration = v.duration || 0;
+
+  let metaResolved = false;
+  function applyMeta() {
+    if (metaResolved) return;
+    metaResolved = true;
+    trimState.duration = (v.duration && isFinite(v.duration)) ? v.duration : 0;
+    if (trimState.duration <= 0) {
+      alert('无法读取视频时长。可能视频已损坏,或浏览器不支持此格式。');
+      trimReset();
+      return;
+    }
     trimState.start = 0;
     trimState.end = trimState.duration;
     trimRefreshUI();
     trimAttachRangeEvents();
     v.ontimeupdate = () => trimSyncPlayhead();
+  }
+  v.onloadedmetadata = applyMeta;
+  v.onloadeddata = applyMeta;
+  v.onerror = () => {
+    if (metaResolved) return;
+    metaResolved = true;
+    alert('视频加载失败,可能是格式不被浏览器支持(尝试 MP4/H.264)。');
+    trimReset();
   };
+  // 5 秒兜底:某些罕见格式可能不触发 loadedmetadata
+  setTimeout(() => {
+    if (!metaResolved) {
+      if (v.readyState >= 1) applyMeta();
+      else {
+        alert('视频元数据读取超时。可能格式不被浏览器原生支持(可以试试导出后再处理)。');
+        trimReset();
+      }
+    }
+  }, 5000);
 }
 
 function trimRefreshUI() {
@@ -2478,53 +2506,70 @@ function trimReset() {
 }
 
 // ── ffmpeg.wasm 加载与执行 ──
+// 用 jsDelivr(它发 Cross-Origin-Resource-Policy: cross-origin,能配合 COEP)
+// 而不是 unpkg(被 COEP 拦截)
+const FFMPEG_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd';
+const FFMPEG_UTIL_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd';
+const FFMPEG_CORE_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd';
+
+// 通用工具:fetch 任意 URL,转成 same-origin 的 blob URL,从而绕过 COEP
+async function _toBlobUrl(url, mime) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Fetch ' + url + ' 失败:' + resp.status);
+  const buf = await resp.arrayBuffer();
+  const blob = new Blob([buf], { type: mime });
+  return URL.createObjectURL(blob);
+}
+
+// 把外部脚本下载成 blob 再以 same-origin 方式 import,这样不受 COEP 限制
+async function _loadScriptAsBlob(url) {
+  const blobUrl = await _toBlobUrl(url, 'text/javascript');
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = blobUrl;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('执行脚本失败:' + url));
+    document.head.appendChild(s);
+  });
+}
+
 async function trimLoadFFmpeg(progressLabel) {
   if (ffmpegLoaded && ffmpegInstance) return ffmpegInstance;
 
   // 检查 SharedArrayBuffer 支持
   if (typeof SharedArrayBuffer === 'undefined') {
-    throw new Error('当前环境不支持 SharedArrayBuffer，无法运行 ffmpeg.wasm。请确认站点已启用 COOP/COEP header。');
+    throw new Error('当前环境不支持 SharedArrayBuffer。请确认站点已启用 COOP+COEP header,并通过 HTTPS 访问。');
+  }
+  if (typeof window.crossOriginIsolated !== 'undefined' && !window.crossOriginIsolated) {
+    throw new Error('页面未处于 cross-origin isolated 状态。请检查 vercel.json 里的 COOP/COEP header 是否已生效(可在 devtools Network 看 response headers)。');
   }
 
-  if (progressLabel) progressLabel.textContent = '下载 FFmpeg 引擎(约 30MB,仅首次)…';
+  if (progressLabel) progressLabel.textContent = '下载 FFmpeg 主脚本…';
 
-  // 动态加载 UMD 脚本
-  await new Promise((resolve, reject) => {
-    if (window.FFmpegWASM) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = 'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/ffmpeg.js';
-    s.crossOrigin = 'anonymous';
-    s.onload = resolve;
-    s.onerror = () => reject(new Error('加载 ffmpeg.js 失败,可能是网络或 CORS 问题'));
-    document.head.appendChild(s);
-  });
-  await new Promise((resolve, reject) => {
-    if (window.FFmpegUtil) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = 'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/index.js';
-    s.crossOrigin = 'anonymous';
-    s.onload = resolve;
-    s.onerror = () => reject(new Error('加载 ffmpeg util 失败'));
-    document.head.appendChild(s);
-  });
+  // 1) 加载 ffmpeg.js (主 SDK)
+  if (!window.FFmpegWASM) {
+    await _loadScriptAsBlob(FFMPEG_BASE + '/ffmpeg.js');
+  }
+  // 2) 加载 util (含 fetchFile/toBlobURL)
+  if (!window.FFmpegUtil) {
+    await _loadScriptAsBlob(FFMPEG_UTIL_BASE + '/index.js');
+  }
+
+  if (!window.FFmpegWASM || !window.FFmpegWASM.FFmpeg) {
+    throw new Error('FFmpeg SDK 加载后未挂到 window.FFmpegWASM,可能版本不兼容');
+  }
+
+  if (progressLabel) progressLabel.textContent = '下载 FFmpeg core 引擎(约 30MB,仅首次)…';
 
   const { FFmpeg } = window.FFmpegWASM;
   const ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({ message }) => { /* console.debug('[ffmpeg]', message); */ });
 
-  ffmpeg.on('log', ({ message }) => {
-    // console.debug('[ffmpeg]', message);
-  });
+  // 3) core 文件:用 fetch + blob 让 ffmpeg 在 worker 里以 same-origin 方式加载
+  const coreURL = await _toBlobUrl(FFMPEG_CORE_BASE + '/ffmpeg-core.js', 'text/javascript');
+  const wasmURL = await _toBlobUrl(FFMPEG_CORE_BASE + '/ffmpeg-core.wasm', 'application/wasm');
 
-  const coreURL = await window.FFmpegUtil.toBlobURL(
-    'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.js',
-    'text/javascript'
-  );
-  const wasmURL = await window.FFmpegUtil.toBlobURL(
-    'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.wasm',
-    'application/wasm'
-  );
-
-  if (progressLabel) progressLabel.textContent = '初始化 FFmpeg…';
+  if (progressLabel) progressLabel.textContent = '初始化 FFmpeg 引擎…';
   await ffmpeg.load({ coreURL, wasmURL });
 
   ffmpegInstance = ffmpeg;
@@ -2553,7 +2598,10 @@ async function trimExport() {
     label.textContent = '读取视频文件…';
     fill.style.width = '20%';
 
-    const { fetchFile } = window.FFmpegUtil;
+    // 优先用官方 fetchFile,拿不到就用兜底实现
+    const fetchFile = (window.FFmpegUtil && window.FFmpegUtil.fetchFile)
+      ? window.FFmpegUtil.fetchFile
+      : async (f) => new Uint8Array(await f.arrayBuffer());
     const inputName = 'input.' + (trimState.file.name.split('.').pop() || 'mp4');
     const data = await fetchFile(trimState.file);
     await ffmpeg.writeFile(inputName, data);
