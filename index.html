@@ -188,6 +188,15 @@
   .detail-panel { flex: 1; overflow-y: auto; padding: 36px 44px; }
   .detail-title { font-size: 15px; font-weight: 500; font-family: var(--mono); margin-bottom: 6px; color: var(--muted); }
   .detail-name { font-size: 20px; font-weight: 600; margin-bottom: 24px; word-break: break-all; }
+  .privacy-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; margin-left: 10px;
+    background: var(--accent-dim); color: var(--accent);
+    border: 1px solid rgba(0,229,160,0.3); border-radius: 6px;
+    font-size: 11.5px; font-weight: 500; font-family: var(--sans);
+    vertical-align: middle; cursor: help;
+  }
+  .privacy-badge svg { flex-shrink: 0; }
 
   .video-player-area {
     background: var(--surface); border: 1px solid var(--border);
@@ -631,6 +640,7 @@
     <div class="upload-header">
       <h1>上传视频进行质检</h1>
       <p>问题片段会被局部丢弃，按可用率打分 · 支持 MP4 / MOV / AVI</p>
+      <p style="font-size:12px;color:var(--accent);margin-top:4px">🔒 上传前自动在浏览器内清除 GPS、设备型号等所有元数据,原始文件不会泄露</p>
     </div>
 
     <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
@@ -739,6 +749,7 @@
     <div class="trim-banner" id="trimBanner">
       <strong>说明：</strong> 首次使用会下载约 30MB 的 FFmpeg 引擎到浏览器（仅一次）。
       此功能需要安全上下文（HTTPS），如遇加载失败请检查站点是否启用了 COOP/COEP header。
+      <br><strong style="color:var(--accent)">🔒 隐私保护：</strong>导出片段时会自动清除所有元数据（GPS 坐标、设备型号、拍摄时间等）。
     </div>
 
     <div class="trim-drop-zone" id="trimDropZone" onclick="document.getElementById('trimFileInput').click()">
@@ -968,15 +979,55 @@ function renderQueueList() {
   const list = document.getElementById('queueList');
   list.innerHTML = uploadQueue.map(item => {
     const icon = item.status==='done'?'✅':item.status==='error'?'❌':item.status==='running'?'⏳':'⏸';
-    const statusText = item.status==='done'?'完成':item.status==='error'?'失败':item.status==='running'?'分析中…':'等待中';
+    const sizeMB = (item.file.size/1024/1024).toFixed(1);
+    const phase = item.phase || '';           // 'compress' | 'upload' | 'analyze' | ''
+    const compressPct = Math.max(0, Math.min(100, item.compressPct || 0));
+    const uploadPct = Math.max(0, Math.min(100, item.uploadPct || 0));
+
+    let statusText;
+    if (item.status === 'done') statusText = '完成';
+    else if (item.status === 'error') statusText = item.error || '失败';
+    else if (item.status === 'running') {
+      if (phase === 'compress') statusText = `压缩 ${compressPct.toFixed(0)}%`;
+      else if (phase === 'upload') statusText = `上传 ${uploadPct.toFixed(0)}%`;
+      else if (phase === 'analyze') statusText = '分析中…';
+      else statusText = '处理中…';
+    } else statusText = '等待中';
+
+    // 两段进度条:压缩段(灰底→暖色) + 上传段(灰底→绿色),done 时整条满
+    const showTwoBar = item.status === 'running' && (phase === 'compress' || phase === 'upload');
+    const overallPct = item.status === 'done' ? 100 :
+                       phase === 'analyze' ? 95 :
+                       phase === 'upload' ? 50 + uploadPct*0.45 :
+                       phase === 'compress' ? compressPct*0.5 : 0;
+
     return `<div class="queue-item ${item.status}" id="qi-${item.id}">
       <span style="font-size:14px">${icon}</span>
       <span class="queue-name">${item.file.name}</span>
-      <span style="font-size:11px;color:var(--muted)">${(item.file.size/1024/1024).toFixed(1)}MB</span>
-      <div class="queue-bar-track"><div class="queue-bar-fill" id="qb-${item.id}" style="width:${item.status==='done'?100:item.status==='running'?50:0}%"></div></div>
+      <span style="font-size:11px;color:var(--muted);white-space:nowrap">${sizeMB}MB</span>
+      ${showTwoBar ? `
+        <div style="display:flex;gap:3px;width:100px;flex-shrink:0">
+          <div class="queue-bar-track" style="flex:1" title="压缩 ${compressPct.toFixed(0)}%">
+            <div class="queue-bar-fill" style="width:${compressPct}%;background:var(--warn)"></div>
+          </div>
+          <div class="queue-bar-track" style="flex:1" title="上传 ${uploadPct.toFixed(0)}%">
+            <div class="queue-bar-fill" style="width:${uploadPct}%"></div>
+          </div>
+        </div>
+      ` : `
+        <div class="queue-bar-track"><div class="queue-bar-fill" id="qb-${item.id}" style="width:${overallPct}%"></div></div>
+      `}
       <span class="queue-status">${statusText}</span>
     </div>`;
   }).join('');
+}
+
+// 局部更新某个队列项的进度(避免整个列表 re-render 闪烁)
+function updateQueueItemProgress(item) {
+  const el = document.getElementById('qi-' + item.id);
+  if (!el) { renderQueueList(); return; }
+  // 简单起见仍然整体 re-render,React 这种细粒度更新 vanilla 不值得做
+  renderQueueList();
 }
 
 function runSpecCheck(file){
@@ -1073,58 +1124,251 @@ function fmtSecFine(s){
 }
 
 const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run/analyze';
+const COMPRESS_THRESHOLD = 100 * 1024 * 1024;  // 100MB 以上自动压缩
+
+// 用 ffmpeg 流复制(无损,2-5秒)去除视频所有元数据,包括:
+//   GPS 坐标、设备型号(iPhone/Android)、拍摄时间、软件版本、缩略图等
+// 命令: ffmpeg -i in -map_metadata -1 -c copy out
+// 不重新编码,体积和质量完全不变
+async function stripMetadata(file, onProgress) {
+  const ffmpeg = await trimLoadFFmpeg();
+  const progressHandler = ({ progress }) => {
+    if (onProgress) onProgress(Math.max(0, Math.min(100, progress * 100)));
+  };
+  ffmpeg.on('progress', progressHandler);
+
+  const inExt = file.name.split('.').pop() || 'mp4';
+  const inputName = 'meta_in.' + inExt;
+  // 流复制时输出格式必须和输入一致,否则可能不支持容器格式
+  // 为保险起见我们保持原扩展名
+  const outputName = 'meta_out.' + inExt;
+
+  try {
+    const fetchFile = (window.FFmpegUtil && window.FFmpegUtil.fetchFile)
+      ? window.FFmpegUtil.fetchFile
+      : async (f) => new Uint8Array(await f.arrayBuffer());
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-map_metadata', '-1',     // 删除全局 metadata
+      '-map_chapters', '-1',     // 删除章节信息
+      '-c', 'copy',              // 流复制,无损瞬间
+      '-movflags', '+faststart', // 优化 mp4 索引(顺手)
+      '-y',
+      outputName,
+    ]);
+
+    const data = await ffmpeg.readFile(outputName);
+    const mime = file.type || 'video/mp4';
+    const blob = new Blob([data.buffer], { type: mime });
+    const newFile = new File([blob], file.name, { type: mime });
+
+    try { await ffmpeg.deleteFile(inputName); } catch(e) {}
+    try { await ffmpeg.deleteFile(outputName); } catch(e) {}
+
+    return newFile;
+  } finally {
+    ffmpeg.off('progress', progressHandler);
+  }
+}
+
+// 用 ffmpeg.wasm 把视频压缩到合适的体积/分辨率/码率
+// 目标: 1080p (高于则缩) + 视频码率 3Mbps + 去音频 + libx264 ultrafast
+// 同时也会清除所有元数据(包括 GPS)
+// 进度通过 onProgress(0-100) 回调
+async function compressVideoForUpload(file, onProgress) {
+  const ffmpeg = await trimLoadFFmpeg();  // 复用裁剪页已加载的 ffmpeg
+
+  // 进度监听 - ffmpeg.wasm 0.12 用 'progress' 事件
+  const progressHandler = ({ progress }) => {
+    // progress 是 0-1 浮点
+    if (onProgress) onProgress(Math.max(0, Math.min(100, progress * 100)));
+  };
+  ffmpeg.on('progress', progressHandler);
+
+  const inputName = 'input.' + (file.name.split('.').pop() || 'mp4');
+  const outputName = 'output_compressed.mp4';
+
+  try {
+    // 写入输入文件
+    const fetchFile = (window.FFmpegUtil && window.FFmpegUtil.fetchFile)
+      ? window.FFmpegUtil.fetchFile
+      : async (f) => new Uint8Array(await f.arrayBuffer());
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    // 压缩参数:
+    //   -an              去音频
+    //   -vf scale='...'  超过 1080p 时缩到 1080p,否则保持原分辨率
+    //   -b:v 3M          视频码率 3Mbps (1.5GB 4K → ~300MB)
+    //   -c:v libx264     兼容性最好
+    //   -preset ultrafast 速度优先(浏览器跑得起)
+    //   -pix_fmt yuv420p 通用兼容
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-an',
+      '-vf', "scale='if(gt(iw,1920),1920,iw)':'if(gt(ih,1080),1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-b:v', '3M',
+      '-pix_fmt', 'yuv420p',
+      '-map_metadata', '-1',     // 顺手清除所有元数据(GPS/设备/拍摄时间等)
+      '-map_chapters', '-1',     // 清除章节
+      '-movflags', '+faststart',
+      '-y',
+      outputName,
+    ]);
+
+    // 读取输出
+    const data = await ffmpeg.readFile(outputName);
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+
+    // 用原文件名(改后缀为 mp4)
+    const baseName = file.name.replace(/\.[^.]+$/, '');
+    const newFile = new File([blob], baseName + '_compressed.mp4', { type: 'video/mp4' });
+
+    // 清理 ffmpeg 内的临时文件
+    try { await ffmpeg.deleteFile(inputName); } catch(e) {}
+    try { await ffmpeg.deleteFile(outputName); } catch(e) {}
+
+    return newFile;
+  } finally {
+    ffmpeg.off('progress', progressHandler);
+  }
+}
+
+// XHR 上传(可以拿到真实上传进度,fetch 拿不到)
+function uploadFormDataWithProgress(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress((e.loaded / e.total) * 100);
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch(e) {
+          reject(new Error('响应不是合法 JSON: ' + xhr.responseText.slice(0, 200)));
+        }
+      } else {
+        reject(new Error('服务器错误: ' + xhr.status + ' ' + xhr.statusText));
+      }
+    };
+    xhr.onerror = () => reject(new Error('网络错误(可能超时或连接中断)'));
+    xhr.ontimeout = () => reject(new Error('请求超时'));
+    xhr.timeout = 15 * 60 * 1000;  // 15 分钟,大文件 + 后端分析时间
+    xhr.send(formData);
+  });
+}
 
 async function analyzeOne(queueItem) {
-  const f = queueItem.file;
+  const originalFile = queueItem.file;
   queueItem.status = 'running';
+  queueItem.compressPct = 0;
+  queueItem.uploadPct = 0;
   renderQueueList();
-
-  const updateQBar = (pct) => {
-    const el = document.getElementById('qb-' + queueItem.id);
-    if (el) el.style.width = pct + '%';
-  };
 
   const bar = document.getElementById('progressBar');
   const pct = document.getElementById('progressPct');
   const sub = document.getElementById('progressSub');
   const title = document.getElementById('progressTitle');
 
-  title.textContent = `分析中：${f.name}`;
+  title.textContent = `处理中:${originalFile.name}`;
   bar.style.background = 'var(--accent)';
 
-  const steps = [[5,'读取视频…'],[15,'上传到服务器…'],[30,'抽取关键帧'],[50,'手部检测'],
-    [65,'速度分析'],[78,'摄像头检测'],[88,'人脸扫描'],[93,'计算评分']];
-  let stepIdx = 0;
-  const fakeTimer = setInterval(() => {
-    if (stepIdx < steps.length) {
-      const [p, label] = steps[stepIdx++];
-      bar.style.width = p + '%'; pct.textContent = p + '%';
-      sub.textContent = label; updateQBar(p);
-    }
-  }, 2000);
+  let uploadFile = originalFile;
+  let compressedFromOriginal = false;
+  let metadataStripped = false;
 
   try {
-    const formData = new FormData();
-    formData.append('file', f, f.name);
-    formData.append('min_hands', MIN_HANDS.toString());  // 现在传 2
-    const resp = await fetch(MODAL_API, { method:'POST', body:formData, redirect:'follow' });
-    clearInterval(fakeTimer);
-    if (!resp.ok) throw new Error('服务器错误：' + resp.status);
-    const result = await resp.json();
+    // ── 阶段 1:压缩 或 清元数据 ──
+    if (originalFile.size > COMPRESS_THRESHOLD) {
+      // 大文件:压缩(顺便清元数据,因为重编码本来就会丢)
+      queueItem.phase = 'compress';
+      renderQueueList();
+      sub.textContent = `压缩 ${originalFile.name} (${(originalFile.size/1024/1024).toFixed(0)}MB)…`;
+      bar.style.width = '5%';
+      pct.textContent = '压缩中…';
 
-    bar.style.width = '100%'; pct.textContent = '100%';
-    sub.textContent = `${f.name} 完成`; updateQBar(100);
+      try {
+        uploadFile = await compressVideoForUpload(originalFile, (p) => {
+          queueItem.compressPct = p;
+          renderQueueList();
+          bar.style.width = (5 + p * 0.45) + '%';
+          pct.textContent = `压缩 ${p.toFixed(0)}%`;
+        });
+        compressedFromOriginal = true;
+        metadataStripped = true;  // 压缩命令含 -map_metadata -1
+        const newMB = (uploadFile.size/1024/1024).toFixed(1);
+        const oldMB = (originalFile.size/1024/1024).toFixed(1);
+        sub.textContent = `压缩完成:${oldMB}MB → ${newMB}MB(GPS 已移除)`;
+      } catch(compressErr) {
+        console.warn('压缩失败,fallback 用原文件直接上传:', compressErr);
+        sub.textContent = `压缩失败,直接上传原文件…`;
+        uploadFile = originalFile;
+        compressedFromOriginal = false;
+      }
+    } else {
+      // 小文件:不压缩,但仍然清元数据(流复制,2-5秒)
+      queueItem.phase = 'compress';   // UI 复用压缩阶段显示
+      renderQueueList();
+      sub.textContent = `清除 ${originalFile.name} 元数据(GPS/设备信息)…`;
+      bar.style.width = '5%';
+      pct.textContent = '清理中…';
+
+      try {
+        uploadFile = await stripMetadata(originalFile, (p) => {
+          queueItem.compressPct = p;
+          renderQueueList();
+          bar.style.width = (5 + p * 0.45) + '%';
+          pct.textContent = `清理 ${p.toFixed(0)}%`;
+        });
+        metadataStripped = true;
+        sub.textContent = `元数据已清除(GPS/设备信息)`;
+      } catch(stripErr) {
+        // 清失败也直接上传原文件(metadataStripped 保持 false)
+        console.warn('清元数据失败,直接上传原文件:', stripErr);
+        sub.textContent = `直接上传原文件…`;
+        uploadFile = originalFile;
+      }
+    }
+
+    // ── 阶段 2:上传(XHR 带进度) ──
+    queueItem.phase = 'upload';
+    queueItem.compressPct = compressedFromOriginal ? 100 : 0;
+    renderQueueList();
+
+    const formData = new FormData();
+    formData.append('file', uploadFile, uploadFile.name);
+    formData.append('min_hands', MIN_HANDS.toString());
+
+    const result = await uploadFormDataWithProgress(MODAL_API, formData, (p) => {
+      queueItem.uploadPct = p;
+      renderQueueList();
+      bar.style.width = (50 + p * 0.45) + '%';
+      pct.textContent = `上传 ${p.toFixed(0)}%`;
+      sub.textContent = `上传 ${uploadFile.name}…`;
+    });
+
+    // ── 阶段 3:服务器返回,显示分析中(已经分析完了,只是 UI 表示) ──
+    queueItem.phase = 'analyze';
+    queueItem.uploadPct = 100;
+    renderQueueList();
+    bar.style.width = '100%';
+    pct.textContent = '100%';
+    sub.textContent = `${originalFile.name} 完成`;
     queueItem.status = 'done';
     renderQueueList();
 
-    const videoUrl = URL.createObjectURL(f);
+    const videoUrl = URL.createObjectURL(originalFile);  // 历史里用原始文件
     const dur = result.duration || 0;
 
     // 前端用新规则重写 issues
     const normalized = normalizeIssues(result.issues || [], dur);
-    // 用 union 时长重算分数(保持原公式 100 − drop/total × 3.2 × 100)
-    // 原公式描述:17.7% 丢弃 → 43 分 ≈ 100 − 17.7 × 3.22,所以系数其实是 100−(drop/total)*322
-    // 兼容后端原值:如果后端返回 score 且未拒收,优先用后端,否则用新算
     const computedScore = dur>0
       ? Math.max(0, Math.round(100 - (normalized.totalDrop/dur) * 322))
       : 0;
@@ -1132,7 +1376,7 @@ async function analyzeOne(queueItem) {
 
     const newV = {
       id: Date.now() + Math.floor(Math.random() * 1000),
-      name: f.name,
+      name: originalFile.name,
       date: new Date().toLocaleString('zh',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
       duration: fmtSec(dur), totalDuration: dur,
       spec: result.spec || {res:'待检测',fps:'30fps',ok:true},
@@ -1141,11 +1385,13 @@ async function analyzeOne(queueItem) {
       issues: normalized.issues,
       totalDrop: normalized.totalDrop,
       aiSummary: result.aiSummary || '分析完成。',
-      videoUrl, videoFile: f,
+      videoUrl, videoFile: originalFile,  // 历史里保留原始文件
       debugFrames: result.debugFrames || [],
+      wasCompressed: compressedFromOriginal,
+      metadataStripped: metadataStripped,  // 上传给后端的版本是否已清元数据
     };
 
-    await saveVideoToDB(newV.id, f);
+    await saveVideoToDB(newV.id, originalFile);
 
     videos.unshift(newV);
     addToHistory(newV);
@@ -1153,11 +1399,10 @@ async function analyzeOne(queueItem) {
     return newV;
 
   } catch(err) {
-    clearInterval(fakeTimer);
     queueItem.status = 'error';
+    queueItem.error = err.message.length > 30 ? err.message.slice(0,30)+'…' : err.message;
     renderQueueList();
-    updateQBar(0);
-    sub.textContent = `${f.name} 失败：${err.message}`;
+    sub.textContent = `${originalFile.name} 失败:${err.message}`;
     console.error(err);
     return null;
   }
@@ -1477,8 +1722,16 @@ function selectVideo(v){
   const verdict = scoreVerdict(v.score, v.rejected);
   const verdictClass = scoreVerdictClass(v.score, v.rejected);
 
+  const privacyBadge = v.metadataStripped
+    ? `<span class="privacy-badge" title="上传时已自动清除 GPS 坐标、设备型号、拍摄时间等所有元数据">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        GPS 已移除
+      </span>`
+    : '';
+
   document.getElementById('detailPanel').innerHTML=`
-    <div class="detail-title">质检报告</div><div class="detail-name">${v.name}</div>
+    <div class="detail-title">质检报告</div>
+    <div class="detail-name">${v.name}${privacyBadge}</div>
     ${rejectHtml}
     <div class="score-summary">
       <div class="score-card"><div class="sc-label">综合评分</div><div class="sc-value ${v.rejected?'fail':scoreClass(v.score)}">${v.rejected?'拒收':v.score}</div><div class="sc-sub">${verdict}</div></div>
@@ -2690,6 +2943,8 @@ async function trimExport() {
       '-to', trimState.end.toFixed(3),
       '-i', inputName,
       '-c', 'copy',
+      '-map_metadata', '-1',     // 清元数据(GPS/设备/拍摄时间)
+      '-map_chapters', '-1',
       '-avoid_negative_ts', 'make_zero',
       '-y',
       'output.mp4'
