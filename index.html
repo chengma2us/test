@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VidScore · 工业视频质检平台</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet" crossorigin="anonymous">
 <style>
   :root {
     --bg: #0d0f12;
@@ -211,6 +211,80 @@
   }
   @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 
+  /* ── DROP 段落编辑器 ── */
+  .drop-editor {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 22px;
+  }
+  .drop-editor-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+  }
+  .drop-editor-title { font-size: 13px; font-weight: 500; }
+  .drop-editor-title small { color: var(--muted); font-weight: 400; margin-left: 8px; font-family: var(--mono); font-size: 11px; }
+  .drop-editor-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ed-btn {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border2);
+    background: transparent; color: var(--muted); font-size: 11.5px;
+    cursor: pointer; font-family: var(--sans); transition: all 0.12s;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .ed-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text); }
+  .ed-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .ed-btn.primary { background: var(--accent); border-color: var(--accent); color: #0d0f12; font-weight: 600; }
+  .ed-btn.primary:hover:not(:disabled) { opacity: 0.9; color: #0d0f12; }
+  .ed-btn.danger { color: var(--danger); border-color: rgba(255,77,109,0.4); }
+  .ed-btn.danger:hover:not(:disabled) { background: var(--danger-dim); border-color: var(--danger); color: var(--danger); }
+
+  .ed-track-wrap {
+    position: relative; width: 100%; height: 44px;
+    background: var(--surface2); border-radius: 6px;
+    border: 1px solid var(--border); overflow: visible;
+    user-select: none; cursor: crosshair;
+  }
+  .ed-playhead {
+    position: absolute; top: -4px; bottom: -4px; width: 2px;
+    background: var(--accent); pointer-events: none; z-index: 5;
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .ed-seg {
+    position: absolute; top: 4px; bottom: 4px;
+    border-radius: 4px; cursor: move;
+    border: 1.5px solid transparent;
+    transition: filter 0.1s, border-color 0.1s;
+  }
+  .ed-seg:hover { filter: brightness(1.15); }
+  .ed-seg.selected { border-color: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
+  .ed-seg.drop { background: rgba(255,178,63,0.55); }
+  .ed-seg.reject { background: rgba(255,77,109,0.65); }
+  .ed-seg.user { background: rgba(77,166,255,0.55); }
+  .ed-handle {
+    position: absolute; top: -2px; bottom: -2px; width: 6px;
+    background: rgba(255,255,255,0.85); cursor: ew-resize;
+    border-radius: 2px; z-index: 3;
+  }
+  .ed-handle.l { left: -3px; }
+  .ed-handle.r { right: -3px; }
+  .ed-seg-label {
+    position: absolute; top: -18px; left: 0;
+    font-size: 10px; font-family: var(--mono); color: var(--muted);
+    white-space: nowrap; pointer-events: none;
+  }
+  .ed-seg.selected .ed-seg-label { color: var(--text); }
+  .ed-time-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); font-family: var(--mono); margin-top: 6px; }
+  .ed-hint { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.6; }
+  .ed-hint kbd {
+    display: inline-block; padding: 1px 5px; background: var(--surface2);
+    border: 1px solid var(--border2); border-radius: 3px;
+    font-family: var(--mono); font-size: 10px; color: var(--text);
+  }
+  .ed-saved-indicator {
+    font-size: 11px; color: var(--accent); font-family: var(--mono);
+    display: inline-flex; align-items: center; gap: 4px;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .ed-saved-indicator.show { opacity: 1; }
+
   /* 轨迹分析器 */
   .trajectory-section { margin-bottom: 32px; }
   .traj-controls { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
@@ -358,6 +432,107 @@
   .history-table td { padding: 13px 16px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 12px; }
   .history-table tr:hover td { background: var(--surface); cursor: pointer; }
 
+  /* ── 视频裁剪页 ── */
+  #view-trim { flex-direction: column; padding: 40px; overflow-y: auto; align-items: center; }
+  .trim-container { width: 100%; max-width: 900px; }
+  .trim-header { margin-bottom: 24px; }
+  .trim-header h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .trim-header p { color: var(--muted); font-size: 13px; }
+  .trim-banner {
+    background: var(--info-dim); border: 1px solid rgba(77,166,255,0.3);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
+    font-size: 12.5px; color: var(--info); line-height: 1.6;
+  }
+  .trim-banner strong { color: var(--text); }
+  .trim-drop-zone {
+    border: 1.5px dashed var(--border2); border-radius: 14px;
+    padding: 36px 24px; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: var(--surface);
+  }
+  .trim-drop-zone:hover, .trim-drop-zone.drag {
+    border-color: var(--accent); background: var(--accent-dim);
+  }
+  .trim-stage {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; margin-top: 16px;
+    display: none;
+  }
+  .trim-stage.active { display: block; }
+  .trim-video-wrap {
+    background: #000; border-radius: 8px; overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .trim-video-wrap video { width: 100%; display: block; }
+  .trim-range-wrap {
+    position: relative; width: 100%; height: 44px;
+    background: var(--surface2); border-radius: 6px;
+    border: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .trim-range-bar {
+    position: absolute; top: 0; height: 100%;
+    background: var(--accent-dim); border-left: 2px solid var(--accent);
+    border-right: 2px solid var(--accent);
+    pointer-events: none;
+  }
+  .trim-handle {
+    position: absolute; top: 50%; transform: translate(-50%,-50%);
+    width: 18px; height: 28px; background: var(--accent);
+    border-radius: 4px; cursor: ew-resize; z-index: 10;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .trim-handle::after {
+    content: '';
+    width: 2px; height: 12px; background: rgba(0,0,0,0.4);
+    border-radius: 1px;
+  }
+  .trim-handle:hover { background: #00ffb0; }
+  .trim-playhead {
+    position: absolute; top: -4px; bottom: -4px; width: 2px;
+    background: #fff; pointer-events: none; z-index: 5;
+    box-shadow: 0 0 4px rgba(255,255,255,0.5);
+  }
+  .trim-time-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
+  }
+  .trim-time-card {
+    background: var(--surface2); padding: 8px 14px; border-radius: 8px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .trim-time-card strong { color: var(--accent); font-weight: 500; }
+  .trim-input-row {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 16px; align-items: center;
+  }
+  .trim-input-row label { font-size: 12px; color: var(--muted); }
+  .trim-input-row input[type=number] {
+    width: 80px; padding: 6px 10px; border-radius: 6px;
+    border: 1px solid var(--border2); background: var(--surface2);
+    color: var(--text); font-family: var(--mono); font-size: 13px;
+  }
+  .trim-actions {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    padding-top: 16px; border-top: 1px solid var(--border);
+  }
+  .trim-export-btn {
+    padding: 11px 24px; border-radius: 8px; border: none;
+    background: var(--accent); color: #0d0f12;
+    font-size: 13.5px; font-weight: 600; cursor: pointer;
+    font-family: var(--sans); transition: opacity 0.15s;
+  }
+  .trim-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .trim-export-btn:not(:disabled):hover { opacity: 0.9; }
+  .trim-progress-wrap {
+    margin-top: 16px; padding: 14px; border-radius: 8px;
+    background: var(--surface2); display: none;
+  }
+  .trim-progress-wrap.active { display: block; }
+  .trim-progress-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-family: var(--mono); }
+  .trim-progress-track { width: 100%; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .trim-progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+
   .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 500; }
   .chip.danger { background: var(--danger-dim); color: var(--danger); }
   .chip.warn { background: var(--warn-dim); color: var(--warn); }
@@ -411,7 +586,7 @@
     .score-summary { grid-template-columns: 1fr 1fr; }
     .spec-grid { grid-template-columns: 1fr 1fr; }
 
-    #view-history { padding: 20px 12px; overflow-x: auto; }
+    #view-history, #view-trim { padding: 20px 12px; overflow-x: auto; }
     .history-table { min-width: 600px; }
     .score-badge { width: 26px; height: 26px; font-size: 10px; }
   }
@@ -431,13 +606,17 @@
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
     分析报告
   </div>
+  <div class="nav-item" onclick="showView('trim')">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+    视频裁剪
+  </div>
   <div class="nav-item" onclick="showView('history')">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     上传历史
   </div>
   <div class="sidebar-footer">
     检测标准：FF数据规范<br>
-    v3.0 · 局部丢弃 + 可用率评分
+    v3.1 · DROP 可编辑 + 裁剪导出
   </div>
 </nav>
 
@@ -484,34 +663,30 @@
     <div class="config-panel" id="configPanel">
       <h3>质检标准</h3>
       <p class="sub">
-        <strong style="color:var(--danger)">REJECT</strong> = 整段视频拒收（仅限隐私问题） ·
+        <strong style="color:var(--danger)">REJECT</strong> = 整段视频拒收（仅限儿童出镜） ·
         <strong style="color:var(--warn)">DROP</strong> = 该片段丢弃，剩余部分按可用率打分
       </p>
 
       <div class="check-grid">
         <div class="check-item fatal">
-          <div class="check-name">🚫 出现人脸 / 儿童（PII）<span class="weight-tag">REJECT</span></div>
-          <div class="check-desc">隐私敏感数据，任何帧出现即整段拒收</div>
+          <div class="check-name">🚫 出现儿童<span class="weight-tag">REJECT</span></div>
+          <div class="check-desc">检测到未成年人，整段拒收（隐私零容忍）</div>
         </div>
         <div class="check-item drop">
-          <div class="check-name">✋ 看不到手<span class="weight-tag">DROP</span></div>
-          <div class="check-desc">画面内无手部，该片段丢弃不计入训练数据</div>
+          <div class="check-name">👤 出现成人脸部<span class="weight-tag">DROP</span></div>
+          <div class="check-desc">画面中可识别成人面部，该片段丢弃</div>
         </div>
         <div class="check-item drop">
-          <div class="check-name">🖐️ 超过2只手<span class="weight-tag">DROP</span></div>
+          <div class="check-name">✋ 少于 2 只手<span class="weight-tag">DROP</span></div>
+          <div class="check-desc">画面内手部数量不足（需双手操作），该片段丢弃</div>
+        </div>
+        <div class="check-item drop">
+          <div class="check-name">🖐️ 超过 2 只手<span class="weight-tag">DROP</span></div>
           <div class="check-desc">出现第三只手（非操作员本人），该片段丢弃</div>
         </div>
         <div class="check-item drop">
-          <div class="check-name">⚡ 手部移动过快<span class="weight-tag">DROP</span></div>
-          <div class="check-desc">需慢速操作，抓取/释放时有 0.3–0.5s 停顿</div>
-        </div>
-        <div class="check-item drop">
-          <div class="check-name">🎥 摄像头移动过快<span class="weight-tag">DROP</span></div>
-          <div class="check-desc">操作员应保持静止，最多 1–2 步移动</div>
-        </div>
-        <div class="check-item drop">
           <div class="check-name">🔍 手部置信度低<span class="weight-tag">DROP</span></div>
-          <div class="check-desc">手部被遮挡/模糊，模型无法锁定关键点</div>
+          <div class="check-desc">手部被遮挡或模糊，模型无法锁定关键点</div>
         </div>
       </div>
 
@@ -549,6 +724,74 @@
   </div>
 </div>
 
+<!-- ── 视频裁剪页 ── -->
+<div class="view" id="view-trim">
+  <div class="trim-container">
+    <div class="trim-header">
+      <h1>视频裁剪导出</h1>
+      <p>上传任意视频，自由选择起止时间，导出无损 MP4 片段（使用 ffmpeg.wasm）</p>
+    </div>
+
+    <div class="trim-banner" id="trimBanner">
+      <strong>说明：</strong> 首次使用会下载约 30MB 的 FFmpeg 引擎到浏览器（仅一次）。
+      此功能需要安全上下文（HTTPS），如遇加载失败请检查站点是否启用了 COOP/COEP header。
+    </div>
+
+    <div class="trim-drop-zone" id="trimDropZone" onclick="document.getElementById('trimFileInput').click()">
+      <input type="file" id="trimFileInput" accept="video/*" style="display:none" onchange="trimHandleFile(this.files[0])">
+      <div style="margin-bottom:10px;color:var(--muted)">
+        <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.4" viewBox="0 0 24 24"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
+      </div>
+      <h3 style="font-size:15px;font-weight:500;margin-bottom:4px" id="trimDropLabel">选择要裁剪的视频</h3>
+      <p style="font-size:12px;color:var(--muted)">支持 MP4 / MOV / AVI / WEBM 等</p>
+    </div>
+
+    <div class="trim-stage" id="trimStage">
+      <div class="trim-video-wrap">
+        <video id="trimVideo" controls></video>
+      </div>
+
+      <div class="trim-time-row">
+        <div class="trim-time-card">片段起点 <strong id="trimStartLabel">0:00.0</strong></div>
+        <div class="trim-time-card">片段终点 <strong id="trimEndLabel">0:00.0</strong></div>
+        <div class="trim-time-card">导出时长 <strong id="trimDurLabel">0.0s</strong></div>
+      </div>
+
+      <div class="trim-range-wrap" id="trimRangeWrap">
+        <div class="trim-range-bar" id="trimRangeBar"></div>
+        <div class="trim-playhead" id="trimPlayhead"></div>
+        <div class="trim-handle" id="trimHandleStart" title="拖动设置起点"></div>
+        <div class="trim-handle" id="trimHandleEnd" title="拖动设置终点"></div>
+      </div>
+      <div class="ed-time-labels">
+        <span>0:00</span>
+        <span id="trimMidLabel">0:00</span>
+        <span id="trimMaxLabel">0:00</span>
+      </div>
+
+      <div class="trim-input-row" style="margin-top:16px">
+        <label>起点(秒) <input type="number" id="trimStartInput" min="0" step="0.1"></label>
+        <label>终点(秒) <input type="number" id="trimEndInput" min="0" step="0.1"></label>
+        <button class="ed-btn" onclick="trimSetStartToCurrent()">⏵ 起点设为当前播放位置</button>
+        <button class="ed-btn" onclick="trimSetEndToCurrent()">⏵ 终点设为当前播放位置</button>
+        <button class="ed-btn" onclick="trimPreview()">预览选中片段</button>
+      </div>
+
+      <div class="trim-actions">
+        <button class="trim-export-btn" id="trimExportBtn" onclick="trimExport()">
+          导出片段 (无损 MP4)
+        </button>
+        <button class="ed-btn" onclick="trimReset()">重新选择视频</button>
+      </div>
+
+      <div class="trim-progress-wrap" id="trimProgress">
+        <div class="trim-progress-label" id="trimProgressLabel">准备中…</div>
+        <div class="trim-progress-track"><div class="trim-progress-fill" id="trimProgressFill"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="view" id="view-history">
   <div style="margin-bottom:6px">
     <h1>上传历史</h1>
@@ -581,12 +824,109 @@ dz.addEventListener('dragleave',e=>{if(!dz.contains(e.relatedTarget))dz.classLis
 dz.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');if(e.dataTransfer.files.length)handleFiles(e.dataTransfer.files);});
 
 // ── 队列系统 ──
-let uploadQueue = [];   // 待处理队列
+let uploadQueue = [];
 let isProcessing = false;
 
-// ── 统一标准：min_hands 固定为 1 ──
-// 看不到手 → DROP 那一段（不区分 1/2 只手）
-const MIN_HANDS = 1;
+// ── 新规则:少于 2 只手 → DROP,所以传 2 ──
+const MIN_HANDS = 2;
+
+// ── 新规则:前端 issues 重写规则 ──
+// 后端可能返回老的标签名,这里前端做一次"规则适配器",保证 UI 始终用新规则
+function normalizeIssues(rawIssues, totalDur) {
+  if (!Array.isArray(rawIssues)) return { issues: [], totalDrop: 0, rejected: false };
+
+  // 1) 删除已废弃的 issue 类型
+  const REMOVED_PATTERNS = [/手部移动过快/, /摄像头移动过快/, /手部移动太快/, /相机移动/];
+  let filtered = rawIssues.filter(iss => !REMOVED_PATTERNS.some(p => p.test(iss.name||'')));
+
+  // 2) 重写名称 + 调整 fatal/severity
+  filtered = filtered.map(iss => {
+    const name = iss.name || '';
+    let newName = name, newFatal = iss.fatal, newSev = iss.severity;
+
+    // 看不到手 / 手部数量不足 → 改为"少于 2 只手"
+    if (/看不到手|没有手|手部数量不足|少于.*手|无手/.test(name)) {
+      newName = '少于 2 只手';
+      newFatal = false;
+      newSev = 'warn';
+    }
+    // 出现儿童 → 保留 REJECT
+    else if (/儿童|未成年|child|minor/i.test(name)) {
+      newName = '出现儿童';
+      newFatal = true;
+      newSev = 'danger';
+    }
+    // 出现人脸(成人) → 改为 DROP
+    else if (/人脸|脸部|face|PII/i.test(name)) {
+      newName = '出现成人脸部';
+      newFatal = false;
+      newSev = 'warn';
+    }
+    // 超过2只手
+    else if (/超过.*2.*手|过多.*手|多手|3.*只手/.test(name)) {
+      newName = '超过 2 只手';
+      newFatal = false;
+      newSev = 'warn';
+    }
+    // 手部置信度
+    else if (/置信度|confidence|模糊|遮挡/i.test(name)) {
+      newName = '手部置信度低';
+      newFatal = false;
+      newSev = 'warn';
+    }
+
+    return { ...iss, name: newName, fatal: newFatal, severity: newSev };
+  });
+
+  // 3) 合并同名 issue(防止后端"看不到手"和"少于2只手"同时出现)
+  const merged = {};
+  filtered.forEach(iss => {
+    const key = iss.name;
+    if (!merged[key]) {
+      merged[key] = { ...iss, segments: [...(iss.segments||[])] };
+    } else {
+      merged[key].segments.push(...(iss.segments||[]));
+    }
+  });
+
+  // 4) 重算每个 issue 的 duration
+  const finalIssues = Object.values(merged).map(iss => {
+    const segs = (iss.segments || []).sort((a,b)=>a[0]-b[0]);
+    // 合并相邻段
+    const reduced = [];
+    segs.forEach(([s,e]) => {
+      if (reduced.length && s <= reduced[reduced.length-1][1] + 0.05) {
+        reduced[reduced.length-1][1] = Math.max(reduced[reduced.length-1][1], e);
+      } else {
+        reduced.push([s,e]);
+      }
+    });
+    const totalSec = reduced.reduce((sum,[s,e])=>sum+(e-s), 0);
+    return { ...iss, segments: reduced, duration: totalSec.toFixed(1)+'s' };
+  });
+
+  // 5) 计算总 DROP 时长(只算非 fatal 的;fatal 的是 REJECT,整段拒收不参与)
+  // 但为了 UI 一致,我们计算"有问题的总并集时长"
+  const allSegs = [];
+  finalIssues.forEach(iss => iss.segments.forEach(seg => allSegs.push(seg)));
+  allSegs.sort((a,b)=>a[0]-b[0]);
+  const unionSegs = [];
+  allSegs.forEach(([s,e]) => {
+    if (unionSegs.length && s <= unionSegs[unionSegs.length-1][1] + 0.05) {
+      unionSegs[unionSegs.length-1][1] = Math.max(unionSegs[unionSegs.length-1][1], e);
+    } else {
+      unionSegs.push([s,e]);
+    }
+  });
+  const totalDrop = unionSegs.reduce((sum,[s,e])=>sum+(e-s), 0);
+  const rejected = finalIssues.some(iss => iss.fatal);
+
+  return {
+    issues: finalIssues,
+    totalDrop: +totalDrop.toFixed(1),
+    rejected,
+  };
+}
 
 function handleFiles(files) {
   const exts=['.mp4','.mov','.avi','.mkv','.m4v','.wmv','.webm','.MP4','.MOV','.AVI','.MOV'];
@@ -722,6 +1062,11 @@ function runSpecCheck(file){
 }
 
 function fmtSec(s){s=Math.round(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+function fmtSecFine(s){
+  s = s||0;
+  const m = Math.floor(s/60), sec = (s%60).toFixed(1);
+  return m + ':' + (sec.padStart(4,'0'));
+}
 
 const MODAL_API = 'https://chengma2us--vidscore-analyze.modal.run/analyze';
 
@@ -757,7 +1102,7 @@ async function analyzeOne(queueItem) {
   try {
     const formData = new FormData();
     formData.append('file', f, f.name);
-    formData.append('min_hands', MIN_HANDS.toString());  // 统一传 1
+    formData.append('min_hands', MIN_HANDS.toString());  // 现在传 2
     const resp = await fetch(MODAL_API, { method:'POST', body:formData, redirect:'follow' });
     clearInterval(fakeTimer);
     if (!resp.ok) throw new Error('服务器错误：' + resp.status);
@@ -770,16 +1115,27 @@ async function analyzeOne(queueItem) {
 
     const videoUrl = URL.createObjectURL(f);
     const dur = result.duration || 0;
+
+    // 前端用新规则重写 issues
+    const normalized = normalizeIssues(result.issues || [], dur);
+    // 用 union 时长重算分数(保持原公式 100 − drop/total × 3.2 × 100)
+    // 原公式描述:17.7% 丢弃 → 43 分 ≈ 100 − 17.7 × 3.22,所以系数其实是 100−(drop/total)*322
+    // 兼容后端原值:如果后端返回 score 且未拒收,优先用后端,否则用新算
+    const computedScore = dur>0
+      ? Math.max(0, Math.round(100 - (normalized.totalDrop/dur) * 322))
+      : 0;
+    const finalScore = normalized.rejected ? 0 : computedScore;
+
     const newV = {
       id: Date.now() + Math.floor(Math.random() * 1000),
       name: f.name,
       date: new Date().toLocaleString('zh',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
       duration: fmtSec(dur), totalDuration: dur,
       spec: result.spec || {res:'待检测',fps:'30fps',ok:true},
-      rejected: result.rejected || false,
-      score: result.score || 0,
-      issues: (result.issues||[]).map(iss=>({...iss,fatal:iss.fatal||false})),
-      totalDrop: result.totalDrop || 0,
+      rejected: normalized.rejected,
+      score: finalScore,
+      issues: normalized.issues,
+      totalDrop: normalized.totalDrop,
       aiSummary: result.aiSummary || '分析完成。',
       videoUrl, videoFile: f,
       debugFrames: result.debugFrames || [],
@@ -854,7 +1210,7 @@ async function startAnalysis() {
 }
 
 
-// ── IndexedDB：持久化存储视频文件 ──
+// ── IndexedDB:持久化存储视频文件 ──
 const DB_NAME = 'vidscore_db';
 const DB_VER = 1;
 let db = null;
@@ -931,6 +1287,8 @@ async function deleteHistory(id) {
   if (idx === -1) return;
   if (!confirm(`确定删除 "${historyRows[idx].name}"？`)) return;
   await deleteVideoFromDB(id);
+  // 同时清理该视频的 DROP 编辑历史
+  try { localStorage.removeItem('vidscore_drop_edits_' + id); } catch(e) {}
   const vi = videos.findIndex(v => v.id === id);
   if (vi !== -1) videos.splice(vi, 1);
   historyRows.splice(idx, 1);
@@ -948,7 +1306,10 @@ async function deleteHistory(id) {
 
 async function clearHistory(){
   if(!confirm('确定清空所有历史记录？'))return;
-  for(const v of historyRows){ await deleteVideoFromDB(v.id); }
+  for(const v of historyRows){
+    await deleteVideoFromDB(v.id);
+    try { localStorage.removeItem('vidscore_drop_edits_' + v.id); } catch(e) {}
+  }
   historyRows.length=0;
   videos.length=0;
   try{localStorage.removeItem('vidscore_history');}catch(e){}
@@ -956,7 +1317,6 @@ async function clearHistory(){
   renderVideoList();
 }
 
-// 评分结论文案 - 对齐 DeepReach 风格
 function scoreVerdict(score, rejected) {
   if (rejected) return '拒收';
   if (score >= 80) return '优秀';
@@ -991,7 +1351,10 @@ function showView(name){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.querySelectorAll('.nav-item')[{upload:0,feedback:1,history:2}[name]].classList.add('active');
+  const navIdx = {upload:0, feedback:1, trim:2, history:3}[name];
+  if (navIdx !== undefined) {
+    document.querySelectorAll('.nav-item')[navIdx].classList.add('active');
+  }
   if(name==='upload'){
     document.getElementById('configPanel').style.display='';
     document.getElementById('specPanel').style.display='';
@@ -1138,6 +1501,38 @@ function selectVideo(v){
           <button class="speed-btn" onclick="setSpeed(2)">2x</button></div>`:''}
       </div>
     </div>
+
+    <!-- ── DROP 段落编辑器 ── -->
+    <div class="drop-editor" id="dropEditor">
+      <div class="drop-editor-head">
+        <div class="drop-editor-title">
+          DROP 段落编辑器
+          <small id="edStats">—</small>
+        </div>
+        <div class="drop-editor-actions">
+          <button class="ed-btn" id="edUndoBtn" onclick="edUndo()">↶ 撤销</button>
+          <button class="ed-btn" id="edRedoBtn" onclick="edRedo()">↷ 重做</button>
+          <button class="ed-btn danger" id="edDelBtn" onclick="edDeleteSelected()" disabled>删除选中</button>
+          <button class="ed-btn primary" onclick="edSave()">保存编辑</button>
+          <button class="ed-btn" onclick="edResetToOriginal()">还原检测结果</button>
+          <span class="ed-saved-indicator" id="edSavedHint">✓ 已保存</span>
+        </div>
+      </div>
+      <div class="ed-track-wrap" id="edTrack"></div>
+      <div class="ed-time-labels">
+        <span>0:00</span>
+        <span id="edMidLabel">${fmtSec(Math.floor(dur/2))}</span>
+        <span>${v.duration}</span>
+      </div>
+      <div class="ed-hint">
+        <kbd>拖动段中部</kbd> 移动整段 ·
+        <kbd>拖动两端</kbd> 调整起止 ·
+        <kbd>点击空白</kbd> 新建片段 ·
+        <kbd>点击选中</kbd> 后 <kbd>Delete</kbd> 删除 ·
+        <kbd>Ctrl+Z / Ctrl+Shift+Z</kbd> 撤销/重做
+      </div>
+    </div>
+
     <div style="margin-bottom:22px"><div class="section-title">视频规格检查</div><div class="spec-grid">${specHtml}</div></div>
     ${v.issues.length?`<div style="margin-bottom:22px"><div class="section-title">检测到的问题</div><div class="issues-list">${issHtml}</div></div>`:''}
     <div style="margin-bottom:32px"><div class="section-title">AI 分析与改进建议</div>
@@ -1161,7 +1556,338 @@ function selectVideo(v){
     if(wrap) wrap.classList.remove('active');
     initTrajSliders(v.totalDuration || 30);
   }, 150);
+
+  // 初始化 DROP 编辑器
+  setTimeout(() => initDropEditor(v), 100);
 }
+
+// ─────────────────────────────────────────
+// ── DROP 段落编辑器(支持无限撤销/重做) ──
+// ─────────────────────────────────────────
+const ED_STORE_KEY = id => 'vidscore_drop_edits_' + id;
+
+let edState = {
+  videoId: null,
+  duration: 0,
+  segments: [],        // [{id, s, e, name, severity, fatal}]
+  history: [],         // 撤销栈
+  future: [],          // 重做栈
+  selectedId: null,
+  dragMode: null,      // 'move' | 'resize-l' | 'resize-r' | 'create'
+  dragSegId: null,
+  dragStartX: 0,
+  dragOrigSeg: null,
+};
+
+function edSegId() { return 's_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
+
+function edCloneSegments(arr) {
+  return arr.map(s => ({...s}));
+}
+
+function edPushHistory() {
+  edState.history.push(edCloneSegments(edState.segments));
+  edState.future = [];
+  if (edState.history.length > 200) edState.history.shift();
+  edUpdateButtons();
+}
+
+function edUndo() {
+  if (!edState.history.length) return;
+  edState.future.push(edCloneSegments(edState.segments));
+  edState.segments = edState.history.pop();
+  edState.selectedId = null;
+  edRender();
+  edUpdateButtons();
+}
+
+function edRedo() {
+  if (!edState.future.length) return;
+  edState.history.push(edCloneSegments(edState.segments));
+  edState.segments = edState.future.pop();
+  edState.selectedId = null;
+  edRender();
+  edUpdateButtons();
+}
+
+function edUpdateButtons() {
+  const undoBtn = document.getElementById('edUndoBtn');
+  const redoBtn = document.getElementById('edRedoBtn');
+  const delBtn = document.getElementById('edDelBtn');
+  if (undoBtn) undoBtn.disabled = edState.history.length === 0;
+  if (redoBtn) redoBtn.disabled = edState.future.length === 0;
+  if (delBtn) delBtn.disabled = edState.selectedId === null;
+  // 统计
+  const stats = document.getElementById('edStats');
+  if (stats) {
+    const totalSec = edState.segments.reduce((sum, s) => sum + (s.e - s.s), 0);
+    stats.textContent = `${edState.segments.length} 段 · ${totalSec.toFixed(1)}s`;
+  }
+}
+
+function initDropEditor(v) {
+  edState.videoId = v.id;
+  edState.duration = v.totalDuration || 0;
+  edState.history = [];
+  edState.future = [];
+  edState.selectedId = null;
+
+  // 优先加载用户保存过的编辑
+  let loaded = null;
+  try {
+    const raw = localStorage.getItem(ED_STORE_KEY(v.id));
+    if (raw) loaded = JSON.parse(raw);
+  } catch(e) {}
+
+  if (loaded && Array.isArray(loaded)) {
+    edState.segments = loaded;
+  } else {
+    // 从原检测结果展开
+    const segs = [];
+    (v.issues || []).forEach(iss => {
+      (iss.segments || []).forEach(([s, e]) => {
+        segs.push({
+          id: edSegId(),
+          s, e,
+          name: iss.name,
+          severity: iss.severity,
+          fatal: !!iss.fatal,
+        });
+      });
+    });
+    segs.sort((a,b) => a.s - b.s);
+    edState.segments = segs;
+  }
+
+  edRender();
+  edUpdateButtons();
+  edAttachTrackEvents();
+}
+
+function edRender() {
+  const track = document.getElementById('edTrack');
+  if (!track) return;
+  const dur = edState.duration;
+  if (dur <= 0) { track.innerHTML = ''; return; }
+
+  track.innerHTML = edState.segments.map(seg => {
+    const left = (seg.s / dur * 100).toFixed(3);
+    const width = Math.max(0.5, (seg.e - seg.s) / dur * 100).toFixed(3);
+    const cls = seg.fatal ? 'reject' : (seg.severity === 'info' ? 'user' : 'drop');
+    const selected = seg.id === edState.selectedId ? ' selected' : '';
+    const label = `${seg.name} ${fmtSecFine(seg.s)}–${fmtSecFine(seg.e)}`;
+    return `<div class="ed-seg ${cls}${selected}" data-id="${seg.id}" style="left:${left}%;width:${width}%">
+      <div class="ed-handle l" data-handle="l" data-id="${seg.id}"></div>
+      <div class="ed-handle r" data-handle="r" data-id="${seg.id}"></div>
+      ${seg.id === edState.selectedId ? `<div class="ed-seg-label">${label}</div>` : ''}
+    </div>`;
+  }).join('') + '<div class="ed-playhead" id="edPlayhead" style="left:0%;display:none"></div>';
+
+  // 同步播放头
+  const vid = document.getElementById('detailVideo');
+  if (vid) edSyncPlayhead(vid.currentTime);
+}
+
+function edSyncPlayhead(t) {
+  const ph = document.getElementById('edPlayhead');
+  if (!ph || !edState.duration) return;
+  ph.style.display = '';
+  ph.style.left = (t / edState.duration * 100) + '%';
+}
+
+function edAttachTrackEvents() {
+  const track = document.getElementById('edTrack');
+  if (!track) return;
+
+  track.addEventListener('mousedown', e => {
+    if (!edState.duration) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    const t = Math.max(0, Math.min(edState.duration, ratio * edState.duration));
+
+    const handle = e.target.closest('.ed-handle');
+    const seg = e.target.closest('.ed-seg');
+
+    if (handle) {
+      // 拖动两端调整大小
+      e.stopPropagation();
+      const segId = handle.dataset.id;
+      const segObj = edState.segments.find(s => s.id === segId);
+      if (!segObj) return;
+      edPushHistory();
+      edState.selectedId = segId;
+      edState.dragMode = handle.dataset.handle === 'l' ? 'resize-l' : 'resize-r';
+      edState.dragSegId = segId;
+      edState.dragOrigSeg = {...segObj};
+      edState.dragStartX = e.clientX;
+      edAttachDragMove(rect);
+      edRender();
+      edUpdateButtons();
+      return;
+    }
+
+    if (seg) {
+      // 选中并准备整段拖动
+      const segId = seg.dataset.id;
+      const segObj = edState.segments.find(s => s.id === segId);
+      if (!segObj) return;
+      edPushHistory();
+      edState.selectedId = segId;
+      edState.dragMode = 'move';
+      edState.dragSegId = segId;
+      edState.dragOrigSeg = {...segObj};
+      edState.dragStartX = e.clientX;
+      edAttachDragMove(rect);
+      edRender();
+      edUpdateButtons();
+      return;
+    }
+
+    // 点击空白:新建一个 2 秒长度的片段
+    const segWidth = Math.min(2, edState.duration / 20);
+    const newSeg = {
+      id: edSegId(),
+      s: Math.max(0, t - segWidth/2),
+      e: Math.min(edState.duration, t + segWidth/2),
+      name: '手动 DROP',
+      severity: 'info',
+      fatal: false,
+    };
+    edPushHistory();
+    edState.segments.push(newSeg);
+    edState.segments.sort((a,b)=>a.s-b.s);
+    edState.selectedId = newSeg.id;
+    // 立即进入右边拖动模式,这样用户可以拖出长度
+    edState.dragMode = 'resize-r';
+    edState.dragSegId = newSeg.id;
+    edState.dragOrigSeg = {...newSeg};
+    edState.dragStartX = e.clientX;
+    edAttachDragMove(rect);
+    edRender();
+    edUpdateButtons();
+  });
+
+  // 同步播放头(轻量监听)
+  const vid = document.getElementById('detailVideo');
+  if (vid) {
+    if (vid._edHandler) vid.removeEventListener('timeupdate', vid._edHandler);
+    vid._edHandler = () => edSyncPlayhead(vid.currentTime);
+    vid.addEventListener('timeupdate', vid._edHandler);
+  }
+}
+
+function edAttachDragMove(trackRect) {
+  function onMove(ev) {
+    if (!edState.dragSegId || !edState.dragOrigSeg) return;
+    const seg = edState.segments.find(s => s.id === edState.dragSegId);
+    if (!seg) return;
+    const deltaX = ev.clientX - edState.dragStartX;
+    const deltaT = (deltaX / trackRect.width) * edState.duration;
+    const orig = edState.dragOrigSeg;
+
+    if (edState.dragMode === 'move') {
+      const len = orig.e - orig.s;
+      let newS = orig.s + deltaT;
+      newS = Math.max(0, Math.min(edState.duration - len, newS));
+      seg.s = newS;
+      seg.e = newS + len;
+    } else if (edState.dragMode === 'resize-l') {
+      let newS = orig.s + deltaT;
+      newS = Math.max(0, Math.min(orig.e - 0.1, newS));
+      seg.s = newS;
+    } else if (edState.dragMode === 'resize-r') {
+      let newE = orig.e + deltaT;
+      newE = Math.max(orig.s + 0.1, Math.min(edState.duration, newE));
+      seg.e = newE;
+    }
+    edRender();
+    edUpdateButtons();
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    edState.dragMode = null;
+    edState.dragSegId = null;
+    edState.dragOrigSeg = null;
+    // 排序、合并(可选,这里只排序,合并交给用户)
+    edState.segments.sort((a,b)=>a.s-b.s);
+    edRender();
+    edUpdateButtons();
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function edDeleteSelected() {
+  if (!edState.selectedId) return;
+  edPushHistory();
+  edState.segments = edState.segments.filter(s => s.id !== edState.selectedId);
+  edState.selectedId = null;
+  edRender();
+  edUpdateButtons();
+}
+
+function edSave() {
+  try {
+    localStorage.setItem(ED_STORE_KEY(edState.videoId), JSON.stringify(edState.segments));
+    const hint = document.getElementById('edSavedHint');
+    if (hint) {
+      hint.classList.add('show');
+      setTimeout(() => hint.classList.remove('show'), 1800);
+    }
+  } catch(e) {
+    alert('保存失败:' + e.message);
+  }
+}
+
+function edResetToOriginal() {
+  if (!confirm('还原到原始检测结果？所有手动编辑将丢失。')) return;
+  edPushHistory();
+  try { localStorage.removeItem(ED_STORE_KEY(edState.videoId)); } catch(e) {}
+  const v = selectedVideo;
+  const segs = [];
+  (v.issues || []).forEach(iss => {
+    (iss.segments || []).forEach(([s, e]) => {
+      segs.push({
+        id: edSegId(),
+        s, e,
+        name: iss.name,
+        severity: iss.severity,
+        fatal: !!iss.fatal,
+      });
+    });
+  });
+  segs.sort((a,b) => a.s - b.s);
+  edState.segments = segs;
+  edState.selectedId = null;
+  edRender();
+  edUpdateButtons();
+}
+
+// ── 键盘快捷键 ──
+document.addEventListener('keydown', e => {
+  // 只在分析报告页且编辑器存在时生效
+  const activeView = document.querySelector('.view.active');
+  if (!activeView || activeView.id !== 'view-feedback') return;
+  if (!document.getElementById('dropEditor')) return;
+
+  // 编辑输入框里不响应
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+    e.preventDefault(); edUndo();
+  } else if (ctrl && ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y')) {
+    e.preventDefault(); edRedo();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (edState.selectedId) { e.preventDefault(); edDeleteSelected(); }
+  } else if (e.key === 'Escape') {
+    edState.selectedId = null;
+    edRender();
+    edUpdateButtons();
+  }
+});
 
 // ── 轨迹分析 ──
 const TRAJ_API = 'https://chengma2us--vidscore-analyze.modal.run/trajectory';
@@ -1560,7 +2286,6 @@ function setupVideoOverlay(v) {
       const inSeg = (iss.segments || []).some(([s, e]) => t >= s && t <= e);
       if (inSeg) active.push(iss);
     });
-    // 对齐 DeepReach 风格:DROP / REJECT 标签 + 问题名
     overlay.innerHTML = active.length === 0 ? '' : active.map(iss => {
       const pill = iss.fatal ? 'REJECT' : 'DROP';
       return `<span class="overlay-tag ${iss.severity}"><span class="drop-pill">${pill}</span> ${iss.name}</span>`;
@@ -1579,6 +2304,309 @@ function setupVideoOverlay(v) {
       }
     });
   });
+}
+
+
+// ═════════════════════════════════════════════
+// ── 视频裁剪页(ffmpeg.wasm 无损 MP4 导出) ──
+// ═════════════════════════════════════════════
+let trimState = {
+  file: null,
+  url: null,
+  duration: 0,
+  start: 0,
+  end: 0,
+};
+let ffmpegInstance = null;
+let ffmpegLoaded = false;
+
+const trimDz = document.getElementById('trimDropZone');
+trimDz.addEventListener('dragenter', e => { e.preventDefault(); trimDz.classList.add('drag'); });
+trimDz.addEventListener('dragover', e => { e.preventDefault(); trimDz.classList.add('drag'); });
+trimDz.addEventListener('dragleave', e => { if (!trimDz.contains(e.relatedTarget)) trimDz.classList.remove('drag'); });
+trimDz.addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation();
+  trimDz.classList.remove('drag');
+  if (e.dataTransfer.files.length) trimHandleFile(e.dataTransfer.files[0]);
+});
+
+function trimHandleFile(file) {
+  if (!file) return;
+  const exts=['.mp4','.mov','.avi','.mkv','.m4v','.wmv','.webm'];
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!file.type.startsWith('video/') && !exts.includes(ext)) {
+    alert('请选择视频文件');
+    return;
+  }
+  // 清理上一个
+  if (trimState.url) { try { URL.revokeObjectURL(trimState.url); } catch(e) {} }
+  trimState.file = file;
+  trimState.url = URL.createObjectURL(file);
+
+  document.getElementById('trimDropLabel').textContent = file.name;
+  document.getElementById('trimStage').classList.add('active');
+
+  const v = document.getElementById('trimVideo');
+  v.src = trimState.url;
+  v.onloadedmetadata = () => {
+    trimState.duration = v.duration || 0;
+    trimState.start = 0;
+    trimState.end = trimState.duration;
+    trimRefreshUI();
+    trimAttachRangeEvents();
+    v.ontimeupdate = () => trimSyncPlayhead();
+  };
+}
+
+function trimRefreshUI() {
+  const dur = trimState.duration;
+  document.getElementById('trimMaxLabel').textContent = fmtSec(dur);
+  document.getElementById('trimMidLabel').textContent = fmtSec(dur/2);
+
+  document.getElementById('trimStartInput').max = dur.toFixed(1);
+  document.getElementById('trimEndInput').max = dur.toFixed(1);
+  document.getElementById('trimStartInput').value = trimState.start.toFixed(1);
+  document.getElementById('trimEndInput').value = trimState.end.toFixed(1);
+
+  const sp = (trimState.start / dur) * 100;
+  const ep = (trimState.end / dur) * 100;
+  document.getElementById('trimRangeBar').style.left = sp + '%';
+  document.getElementById('trimRangeBar').style.width = (ep - sp) + '%';
+  document.getElementById('trimHandleStart').style.left = sp + '%';
+  document.getElementById('trimHandleEnd').style.left = ep + '%';
+
+  document.getElementById('trimStartLabel').textContent = fmtSecFine(trimState.start);
+  document.getElementById('trimEndLabel').textContent = fmtSecFine(trimState.end);
+  document.getElementById('trimDurLabel').textContent = (trimState.end - trimState.start).toFixed(1) + 's';
+}
+
+function trimSyncPlayhead() {
+  const v = document.getElementById('trimVideo');
+  if (!v || !trimState.duration) return;
+  const t = v.currentTime;
+  document.getElementById('trimPlayhead').style.left = (t / trimState.duration * 100) + '%';
+}
+
+function trimAttachRangeEvents() {
+  const wrap = document.getElementById('trimRangeWrap');
+  const hs = document.getElementById('trimHandleStart');
+  const he = document.getElementById('trimHandleEnd');
+
+  function makeDrag(handle, isStart) {
+    const onDown = e => {
+      e.preventDefault(); e.stopPropagation();
+      const onMove = ev => {
+        const rect = wrap.getBoundingClientRect();
+        const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+        const ratio = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
+        const t = ratio * trimState.duration;
+        if (isStart) {
+          trimState.start = Math.min(t, trimState.end - 0.1);
+        } else {
+          trimState.end = Math.max(t, trimState.start + 0.1);
+          trimState.end = Math.min(trimState.end, trimState.duration);
+        }
+        trimRefreshUI();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onMove, {passive:false});
+      document.addEventListener('touchend', onUp);
+    };
+    handle.addEventListener('mousedown', onDown);
+    handle.addEventListener('touchstart', onDown, {passive:false});
+  }
+  makeDrag(hs, true);
+  makeDrag(he, false);
+
+  // 点击轨道跳转播放
+  wrap.addEventListener('click', e => {
+    if (e.target.classList.contains('trim-handle')) return;
+    const rect = wrap.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    const t = ratio * trimState.duration;
+    document.getElementById('trimVideo').currentTime = t;
+  });
+
+  document.getElementById('trimStartInput').addEventListener('change', e => {
+    const v = Math.max(0, Math.min(parseFloat(e.target.value)||0, trimState.end - 0.1));
+    trimState.start = v; trimRefreshUI();
+  });
+  document.getElementById('trimEndInput').addEventListener('change', e => {
+    const v = Math.min(trimState.duration, Math.max(parseFloat(e.target.value)||0.1, trimState.start + 0.1));
+    trimState.end = v; trimRefreshUI();
+  });
+}
+
+function trimSetStartToCurrent() {
+  const v = document.getElementById('trimVideo');
+  if (!v) return;
+  trimState.start = Math.min(v.currentTime, trimState.end - 0.1);
+  trimRefreshUI();
+}
+function trimSetEndToCurrent() {
+  const v = document.getElementById('trimVideo');
+  if (!v) return;
+  trimState.end = Math.max(v.currentTime, trimState.start + 0.1);
+  trimRefreshUI();
+}
+function trimPreview() {
+  const v = document.getElementById('trimVideo');
+  if (!v) return;
+  v.currentTime = trimState.start;
+  v.play();
+  const onTime = () => {
+    if (v.currentTime >= trimState.end) {
+      v.pause();
+      v.removeEventListener('timeupdate', onTime);
+    }
+  };
+  v.addEventListener('timeupdate', onTime);
+}
+function trimReset() {
+  if (trimState.url) { try { URL.revokeObjectURL(trimState.url); } catch(e) {} }
+  trimState = { file: null, url: null, duration: 0, start: 0, end: 0 };
+  document.getElementById('trimStage').classList.remove('active');
+  document.getElementById('trimDropLabel').textContent = '选择要裁剪的视频';
+  document.getElementById('trimFileInput').value = '';
+}
+
+// ── ffmpeg.wasm 加载与执行 ──
+async function trimLoadFFmpeg(progressLabel) {
+  if (ffmpegLoaded && ffmpegInstance) return ffmpegInstance;
+
+  // 检查 SharedArrayBuffer 支持
+  if (typeof SharedArrayBuffer === 'undefined') {
+    throw new Error('当前环境不支持 SharedArrayBuffer，无法运行 ffmpeg.wasm。请确认站点已启用 COOP/COEP header。');
+  }
+
+  if (progressLabel) progressLabel.textContent = '下载 FFmpeg 引擎(约 30MB,仅首次)…';
+
+  // 动态加载 UMD 脚本
+  await new Promise((resolve, reject) => {
+    if (window.FFmpegWASM) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/ffmpeg.js';
+    s.crossOrigin = 'anonymous';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('加载 ffmpeg.js 失败,可能是网络或 CORS 问题'));
+    document.head.appendChild(s);
+  });
+  await new Promise((resolve, reject) => {
+    if (window.FFmpegUtil) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/index.js';
+    s.crossOrigin = 'anonymous';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('加载 ffmpeg util 失败'));
+    document.head.appendChild(s);
+  });
+
+  const { FFmpeg } = window.FFmpegWASM;
+  const ffmpeg = new FFmpeg();
+
+  ffmpeg.on('log', ({ message }) => {
+    // console.debug('[ffmpeg]', message);
+  });
+
+  const coreURL = await window.FFmpegUtil.toBlobURL(
+    'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.js',
+    'text/javascript'
+  );
+  const wasmURL = await window.FFmpegUtil.toBlobURL(
+    'https://unpkg.com/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.wasm',
+    'application/wasm'
+  );
+
+  if (progressLabel) progressLabel.textContent = '初始化 FFmpeg…';
+  await ffmpeg.load({ coreURL, wasmURL });
+
+  ffmpegInstance = ffmpeg;
+  ffmpegLoaded = true;
+  return ffmpeg;
+}
+
+async function trimExport() {
+  if (!trimState.file) { alert('请先选择视频'); return; }
+  const dur = trimState.end - trimState.start;
+  if (dur < 0.1) { alert('片段太短(<0.1秒)'); return; }
+
+  const btn = document.getElementById('trimExportBtn');
+  const wrap = document.getElementById('trimProgress');
+  const label = document.getElementById('trimProgressLabel');
+  const fill = document.getElementById('trimProgressFill');
+
+  btn.disabled = true;
+  btn.textContent = '导出中…';
+  wrap.classList.add('active');
+  fill.style.width = '0%';
+
+  try {
+    const ffmpeg = await trimLoadFFmpeg(label);
+
+    label.textContent = '读取视频文件…';
+    fill.style.width = '20%';
+
+    const { fetchFile } = window.FFmpegUtil;
+    const inputName = 'input.' + (trimState.file.name.split('.').pop() || 'mp4');
+    const data = await fetchFile(trimState.file);
+    await ffmpeg.writeFile(inputName, data);
+
+    label.textContent = `裁剪 ${fmtSecFine(trimState.start)} - ${fmtSecFine(trimState.end)} (无损流复制)…`;
+    fill.style.width = '50%';
+
+    // 关键参数:-ss 在 -i 之前(快速seek)、-c copy(流复制,无损、瞬间)
+    // 同时加 -avoid_negative_ts make_zero 避免时间戳问题
+    await ffmpeg.exec([
+      '-ss', trimState.start.toFixed(3),
+      '-to', trimState.end.toFixed(3),
+      '-i', inputName,
+      '-c', 'copy',
+      '-avoid_negative_ts', 'make_zero',
+      '-y',
+      'output.mp4'
+    ]);
+
+    label.textContent = '生成下载文件…';
+    fill.style.width = '85%';
+
+    const outData = await ffmpeg.readFile('output.mp4');
+    const blob = new Blob([outData.buffer], { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+
+    const baseName = trimState.file.name.replace(/\.[^.]+$/, '');
+    const outName = `${baseName}_${trimState.start.toFixed(1)}s-${trimState.end.toFixed(1)}s.mp4`;
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = outName;
+    a.click();
+
+    // 清理 ffmpeg 内的临时文件
+    try { await ffmpeg.deleteFile(inputName); } catch(e) {}
+    try { await ffmpeg.deleteFile('output.mp4'); } catch(e) {}
+
+    fill.style.width = '100%';
+    label.textContent = `✅ 完成 - ${outName} (${(blob.size/1024/1024).toFixed(1)}MB)`;
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  } catch(err) {
+    console.error(err);
+    label.textContent = '❌ 失败: ' + err.message;
+    fill.style.background = 'var(--danger)';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '导出片段 (无损 MP4)';
+    setTimeout(() => {
+      fill.style.background = 'var(--accent)';
+    }, 100);
+  }
 }
 
 loadHistory();
