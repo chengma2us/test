@@ -298,6 +298,83 @@
   }
   .ed-saved-indicator.show { opacity: 1; }
 
+  /* 分段管理 */
+  .seg-mgr {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 22px;
+  }
+  .seg-mgr-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; gap: 12px; flex-wrap: wrap;
+  }
+  .seg-mgr-title {
+    font-size: 14px; font-weight: 600; color: var(--text);
+  }
+  .seg-mgr-title small {
+    font-size: 11.5px; color: var(--muted); font-weight: 400;
+    margin-left: 8px; font-family: var(--mono);
+  }
+  .seg-list {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .seg-row {
+    display: grid; grid-template-columns: 36px 90px 130px 1fr auto;
+    gap: 12px; align-items: center;
+    padding: 9px 12px; border-radius: 7px;
+    background: var(--surface2);
+    border: 1px solid transparent;
+    font-size: 13px;
+  }
+  .seg-row.drop {
+    background: rgba(255,176,67,0.07);
+    border-color: rgba(255,176,67,0.18);
+  }
+  .seg-row.keep { /* default surface2 */ }
+  .seg-num {
+    font-family: var(--mono); font-weight: 600;
+    font-size: 13px; color: var(--text);
+    background: var(--surface3, #2a2d35);
+    width: 28px; height: 28px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .seg-row.drop .seg-num { background: rgba(255,176,67,0.18); color: var(--warn); }
+  .seg-status {
+    font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
+    text-align: center; font-family: var(--mono);
+  }
+  .seg-status.keep { background: rgba(0,229,160,0.15); color: var(--accent); }
+  .seg-status.drop { background: rgba(255,176,67,0.18); color: var(--warn); }
+  .seg-time {
+    font-family: var(--mono); font-size: 12.5px; color: var(--text);
+  }
+  .seg-dur {
+    font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  }
+  .seg-dl-btn {
+    padding: 5px 12px; border-radius: 5px; border: 1px solid var(--border2);
+    background: transparent; color: var(--muted);
+    font-size: 11.5px; cursor: pointer; font-family: var(--sans);
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .seg-dl-btn:hover:not(:disabled) {
+    color: var(--accent); border-color: var(--accent);
+  }
+  .seg-dl-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .seg-dl-btn.downloading {
+    color: var(--accent); border-color: var(--accent);
+    pointer-events: none;
+  }
+  @media (max-width: 600px) {
+    .seg-row {
+      grid-template-columns: 32px 70px 1fr auto;
+      font-size: 12px; gap: 8px;
+    }
+    .seg-row .seg-dur { display: none; }
+  }
+
   /* 轨迹分析器 */
   .trajectory-section { margin-bottom: 32px; }
   .traj-controls { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
@@ -1760,6 +1837,7 @@ function selectVideo(v){
           <button class="ed-btn" id="edUndoBtn" onclick="edUndo()">↶ 撤销</button>
           <button class="ed-btn" id="edRedoBtn" onclick="edRedo()">↷ 重做</button>
           <button class="ed-btn danger" id="edDelBtn" onclick="edDeleteSelected()" disabled>删除选中</button>
+          <button class="ed-btn" onclick="edApplyMerge20s()" title="把间隔 < 20 秒的 DROP 段合并为一整段">🔗 应用 20s 合并</button>
           <button class="ed-btn primary" onclick="edSave()">保存编辑</button>
           <button class="ed-btn" onclick="edResetToOriginal()">还原检测结果</button>
           <span class="ed-saved-indicator" id="edSavedHint">✓ 已保存</span>
@@ -1776,8 +1854,18 @@ function selectVideo(v){
         <kbd>拖动两端</kbd> 调整起止 ·
         <kbd>点击空白</kbd> 新建片段 ·
         <kbd>点击选中</kbd> 后 <kbd>Delete</kbd> 删除 ·
-        <kbd>Ctrl+Z / Ctrl+Shift+Z</kbd> 撤销/重做
+        <kbd>Ctrl+Z / Ctrl+Shift+Z</kbd> 撤销/重做 ·
+        <kbd>🔗 应用 20s 合并</kbd> 把间隔 &lt; 20s 的 DROP 段合并
       </div>
+    </div>
+
+    <!-- ── 分段管理 ── -->
+    <div class="seg-mgr" id="segMgr">
+      <div class="seg-mgr-head">
+        <div class="seg-mgr-title">分段管理 <small id="segMgrStats">—</small></div>
+        <div style="font-size:12px;color:var(--muted)">基于当前 DROP 段实时计算 · 保留段可下载</div>
+      </div>
+      <div class="seg-list" id="segList">—</div>
     </div>
 
     <div style="margin-bottom:22px"><div class="section-title">视频规格检查</div><div class="spec-grid">${specHtml}</div></div>
@@ -1933,6 +2021,9 @@ function edRender() {
   // 同步播放头
   const vid = document.getElementById('detailVideo');
   if (vid) edSyncPlayhead(vid.currentTime);
+
+  // 同步分段管理
+  renderSegList();
 }
 
 function edSyncPlayhead(t) {
@@ -2109,6 +2200,219 @@ function edResetToOriginal() {
   edState.selectedId = null;
   edRender();
   edUpdateButtons();
+}
+
+// === 20 秒合并: 任意两个 DROP 段之间间隔 < 20 秒,把它们(以及中间)合成一段 ===
+// 跨类型合并(face + hands 也会合)
+const MERGE_GAP_SEC = 20;
+function mergeSegmentsBy20s(segments) {
+  if (!segments || !Array.isArray(segments) || segments.length === 0) return [];
+  if (segments.length === 1) return [{ ...segments[0] }];
+  const sorted = segments.slice().sort((a, b) => a.s - b.s);
+  const out = [];
+  let cur = { ...sorted[0], names: [sorted[0].name] };
+  for (let i = 1; i < sorted.length; i++) {
+    const next = sorted[i];
+    if (next.s - cur.e < MERGE_GAP_SEC) {
+      // 合并: 扩展右端, 中间全部纳入
+      cur.e = Math.max(cur.e, next.e);
+      // 合并 fatal: 任一为 fatal 则合后也 fatal
+      cur.fatal = cur.fatal || next.fatal;
+      // 名称累加,去重
+      if (!cur.names.includes(next.name)) cur.names.push(next.name);
+    } else {
+      out.push({
+        ...cur,
+        name: cur.names.length > 1 ? cur.names.join(' + ') : cur.names[0],
+      });
+      cur = { ...next, names: [next.name] };
+    }
+  }
+  out.push({
+    ...cur,
+    name: cur.names.length > 1 ? cur.names.join(' + ') : cur.names[0],
+  });
+  // 重新生成 id
+  return out.map(s => ({ ...s, id: edSegId(), names: undefined }));
+}
+
+// 手动按钮: 应用 20s 合并
+function edApplyMerge20s() {
+  if (!edState.segments || edState.segments.length < 2) {
+    alert('当前 DROP 段不足 2 个,无需合并');
+    return;
+  }
+  const before = edState.segments.length;
+  const merged = mergeSegmentsBy20s(edState.segments);
+  if (merged.length === before) {
+    alert(`所有 DROP 段间隔都 ≥ ${MERGE_GAP_SEC} 秒,无需合并`);
+    return;
+  }
+  edPushHistory();
+  edState.segments = merged;
+  edState.selectedId = null;
+  edRender();
+  edUpdateButtons();
+}
+
+// === 根据当前 DROP 段计算视频分段(保留 + DROP 交替) ===
+// 返回数组 [{idx, s, e, status, name}], idx 从 1 开始
+function computeSegmentLayout(dropSegments, totalDur) {
+  if (!totalDur || totalDur <= 0) return [];
+  if (!dropSegments || dropSegments.length === 0) {
+    return [{ idx: 1, s: 0, e: totalDur, status: 'keep', name: '完整保留' }];
+  }
+  // 把 DROP 段按时间排序 + 截断到视频范围 + 合并重叠
+  let drops = dropSegments
+    .map(d => ({ s: Math.max(0, d.s), e: Math.min(totalDur, d.e), name: d.name }))
+    .filter(d => d.e > d.s)
+    .sort((a, b) => a.s - b.s);
+  const mergedDrops = [];
+  drops.forEach(d => {
+    const last = mergedDrops[mergedDrops.length - 1];
+    if (last && d.s <= last.e) {
+      last.e = Math.max(last.e, d.e);
+      last.name = last.name + ' / ' + d.name;
+    } else {
+      mergedDrops.push({ ...d });
+    }
+  });
+
+  const out = [];
+  let cursor = 0;
+  let idx = 1;
+  mergedDrops.forEach(d => {
+    if (d.s > cursor) {
+      out.push({ idx: idx++, s: cursor, e: d.s, status: 'keep', name: '保留段' });
+    }
+    out.push({ idx: idx++, s: d.s, e: d.e, status: 'drop', name: d.name || 'DROP' });
+    cursor = d.e;
+  });
+  if (cursor < totalDur) {
+    out.push({ idx: idx++, s: cursor, e: totalDur, status: 'keep', name: '保留段' });
+  }
+  return out;
+}
+
+// 渲染分段管理列表
+function renderSegList() {
+  const list = document.getElementById('segList');
+  const stats = document.getElementById('segMgrStats');
+  if (!list) return;
+
+  const layout = computeSegmentLayout(edState.segments, edState.duration);
+  const keepCount = layout.filter(s => s.status === 'keep').length;
+  const dropCount = layout.filter(s => s.status === 'drop').length;
+  const keepDur = layout.filter(s => s.status === 'keep').reduce((sum, s) => sum + (s.e - s.s), 0);
+  const dropDur = layout.filter(s => s.status === 'drop').reduce((sum, s) => sum + (s.e - s.s), 0);
+
+  if (stats) {
+    stats.textContent = `共 ${layout.length} 段 · 保留 ${keepCount} 段 ${fmtSec(keepDur)} · DROP ${dropCount} 段 ${fmtSec(dropDur)}`;
+  }
+
+  if (!layout.length) {
+    list.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;font-size:13px">无视频时长信息</div>';
+    return;
+  }
+
+  list.innerHTML = layout.map(seg => {
+    const isKeep = seg.status === 'keep';
+    const dur = seg.e - seg.s;
+    const sMMSS = fmtSecMMSS(seg.s);
+    const eMMSS = fmtSecMMSS(seg.e);
+    const dlLabel = isKeep ? `⬇ 下载` : '—';
+    const dlBtn = isKeep
+      ? `<button class="seg-dl-btn" onclick="downloadSingleSegment(${seg.idx}, ${seg.s.toFixed(3)}, ${seg.e.toFixed(3)})">${dlLabel}</button>`
+      : `<span style="font-size:11px;color:var(--muted);padding:0 8px">不可下载</span>`;
+    return `<div class="seg-row ${seg.status}">
+      <div class="seg-num">${seg.idx}</div>
+      <div class="seg-status ${seg.status}">${isKeep ? '保留' : 'DROP'}</div>
+      <div class="seg-time">${sMMSS} – ${eMMSS}</div>
+      <div class="seg-dur">${dur.toFixed(1)}s · ${seg.name}</div>
+      ${dlBtn}
+    </div>`;
+  }).join('');
+}
+
+// 把秒数格式化成 MMmSSs 风格 (区别于 0:00,用于文件名安全)
+function fmtSecMMSS(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function fmtSecForFilename(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(m).padStart(2,'0')}m${String(s).padStart(2,'0')}s`;
+}
+
+// 用 ffmpeg.wasm 切出某一段并触发下载
+// 文件名: <原文件名 without ext>_seg<编号>_<起>-<止>.mp4
+async function downloadSingleSegment(segIdx, startSec, endSec) {
+  if (!selectedVideo || !selectedVideo.videoFile) {
+    alert('原视频文件不可用,无法下载段。请重新分析视频。');
+    return;
+  }
+  const dur = endSec - startSec;
+  if (dur < 0.1) { alert('片段过短(<0.1秒)'); return; }
+
+  const btn = event && event.target;
+  const origLabel = btn ? btn.textContent : '';
+  if (btn) {
+    btn.classList.add('downloading');
+    btn.disabled = true;
+    btn.textContent = '准备…';
+  }
+
+  try {
+    const ffmpeg = await trimLoadFFmpeg();
+    if (btn) btn.textContent = '切片中…';
+
+    const file = selectedVideo.videoFile;
+    const inputExt = file.name.split('.').pop() || 'mp4';
+    const inputName = 'seg_in.' + inputExt;
+    const outputName = 'seg_out.mp4';
+
+    const fetchFile = (window.FFmpegUtil && window.FFmpegUtil.fetchFile)
+      ? window.FFmpegUtil.fetchFile
+      : async (f) => new Uint8Array(await f.arrayBuffer());
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+    // 流复制+清元数据,无损快速
+    await ffmpeg.exec([
+      '-ss', startSec.toFixed(3),
+      '-to', endSec.toFixed(3),
+      '-i', inputName,
+      '-c', 'copy',
+      '-map_metadata', '-1',
+      '-map_chapters', '-1',
+      '-avoid_negative_ts', 'make_zero',
+      '-y',
+      outputName,
+    ]);
+    const data = await ffmpeg.readFile(outputName);
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+
+    const baseName = (selectedVideo.name || 'video').replace(/\.[^.]+$/, '');
+    const dlName = `${baseName}_seg${segIdx}_${fmtSecForFilename(startSec)}-${fmtSecForFilename(endSec)}.mp4`;
+
+    const a = document.createElement('a');
+    a.href = url; a.download = dlName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    try { await ffmpeg.deleteFile(inputName); } catch(e) {}
+    try { await ffmpeg.deleteFile(outputName); } catch(e) {}
+
+    if (btn) { btn.textContent = '✓ 已下载'; setTimeout(() => { btn.textContent = origLabel; btn.classList.remove('downloading'); btn.disabled = false; }, 2000); }
+  } catch(err) {
+    console.error('下载段失败:', err);
+    alert('下载失败: ' + err.message);
+    if (btn) { btn.textContent = origLabel; btn.classList.remove('downloading'); btn.disabled = false; }
+  }
 }
 
 // ── 键盘快捷键 ──
