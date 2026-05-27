@@ -2513,20 +2513,23 @@ function trimReset() {
 // 用 jsDelivr(它发 Cross-Origin-Resource-Policy: cross-origin,能配合 COEP)
 // 而不是 unpkg(被 COEP 拦截)
 //
-// ⚠️ 重要:这里用模板字符串拼接,绝对不能写成完整的 'name@version' 字面量!
+// ⚠️ 重要 1:URL 用拼接构造,绝对不能写成完整的 'name@version' 字面量!
 // 因为 Vercel/Cloudflare 的 Email Obfuscation 会把任何 "xxx@yyy" 形式的
-// 字符串当邮箱混淆成 "[email protected]",导致 URL 变成
-// "/@ffmpeg/[email%20protected]" 而 404
+// 字符串当邮箱混淆成 "[email protected]",导致 URL 变成 404
+//
+// ⚠️ 重要 2:用 ESM 而非 UMD! @ffmpeg/util 的"UMD"包实际是裸 CJS,
+// 直接 <script> 加载会报 "exports is not defined"。ESM 模块没有这个问题。
 const _PKG_FF = '@ffmpeg' + '/' + 'ffmpeg';
 const _PKG_FU = '@ffmpeg' + '/' + 'util';
 const _PKG_FC = '@ffmpeg' + '/' + 'core';
-const _VER_FF = '0.12.15';    // @ffmpeg/ffmpeg latest
-const _VER_FU = '0.12.2';     // @ffmpeg/util  latest (注意:只到 0.12.2)
-const _VER_FC = '0.12.10';    // @ffmpeg/core  按官方文档推荐
+const _VER_FF = '0.12.15';
+const _VER_FU = '0.12.2';
+const _VER_FC = '0.12.10';
 const _CDN = 'https://cdn.jsdelivr.net/npm/';
-const FFMPEG_BASE = _CDN + _PKG_FF + '@' + _VER_FF + '/dist/umd';
-const FFMPEG_UTIL_BASE = _CDN + _PKG_FU + '@' + _VER_FU + '/dist/umd';
-const FFMPEG_CORE_BASE = _CDN + _PKG_FC + '@' + _VER_FC + '/dist/umd';
+// ESM 入口路径(注意是 esm 不是 umd)
+const FFMPEG_ESM = _CDN + _PKG_FF + '@' + _VER_FF + '/dist/esm/index.js';
+const FFMPEG_UTIL_ESM = _CDN + _PKG_FU + '@' + _VER_FU + '/dist/esm/index.js';
+const FFMPEG_CORE_BASE = _CDN + _PKG_FC + '@' + _VER_FC + '/dist/umd';  // core 仍用 umd(被 ffmpeg 加载,不是被浏览器加载)
 
 // 通用工具:fetch 任意 URL,转成 same-origin 的 blob URL,从而绕过 COEP
 async function _toBlobUrl(url, mime) {
@@ -2537,16 +2540,36 @@ async function _toBlobUrl(url, mime) {
   return URL.createObjectURL(blob);
 }
 
-// 把外部脚本下载成 blob 再以 same-origin 方式 import,这样不受 COEP 限制
-async function _loadScriptAsBlob(url) {
-  const blobUrl = await _toBlobUrl(url, 'text/javascript');
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = blobUrl;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error('执行脚本失败:' + url));
-    document.head.appendChild(s);
-  });
+// fetch ESM 源码 + 重写其内部的相对 import,然后通过 blob URL + dynamic import 加载
+// 这样能绕过 COEP 限制(等价于把整个模块本地化)
+async function _importEsmFromCdn(entryUrl) {
+  // 简单情况:模块没有相对 import,直接 fetch 包装成 blob 后 import 即可
+  // 复杂情况:有相对 import 时,要递归把它们都改成 blob URL -- ffmpeg/util 这两个包
+  // 都很小,内部没多少模块,我们直接尝试,失败再回退
+  const resp = await fetch(entryUrl);
+  if (!resp.ok) throw new Error('Fetch ' + entryUrl + ' 失败:' + resp.status);
+  let code = await resp.text();
+
+  // 把相对 import 改成绝对 CDN URL,这样浏览器 module 解析能正确去 CDN 拉
+  // 例如 `from "./classes.js"` -> `from "https://cdn.../dist/esm/classes.js"`
+  const baseUrl = entryUrl.replace(/\/[^/]+$/, '/');
+  code = code.replace(
+    /(\bfrom\s+["'])(\.\.?\/[^"']+)(["'])/g,
+    (_, p, rel, q) => p + new URL(rel, baseUrl).href + q
+  );
+  code = code.replace(
+    /(\bimport\s*\(\s*["'])(\.\.?\/[^"']+)(["']\s*\))/g,
+    (_, p, rel, q) => p + new URL(rel, baseUrl).href + q
+  );
+
+  const blob = new Blob([code], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    const mod = await import(/* @vite-ignore */ blobUrl);
+    return mod;
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+  }
 }
 
 async function trimLoadFFmpeg(progressLabel) {
@@ -2562,22 +2585,20 @@ async function trimLoadFFmpeg(progressLabel) {
 
   if (progressLabel) progressLabel.textContent = '下载 FFmpeg 主脚本…';
 
-  // 1) 加载 ffmpeg.js (主 SDK)
-  if (!window.FFmpegWASM) {
-    await _loadScriptAsBlob(FFMPEG_BASE + '/ffmpeg.js');
-  }
-  // 2) 加载 util (含 fetchFile/toBlobURL)
-  if (!window.FFmpegUtil) {
-    await _loadScriptAsBlob(FFMPEG_UTIL_BASE + '/index.js');
+  // 1) ESM 导入 ffmpeg 主 SDK (避免 UMD/CJS 的 exports 问题)
+  const ffmpegMod = await _importEsmFromCdn(FFMPEG_ESM);
+  if (!ffmpegMod.FFmpeg) {
+    throw new Error('@ffmpeg/ffmpeg ESM 模块没有导出 FFmpeg 类,可能版本变更');
   }
 
-  if (!window.FFmpegWASM || !window.FFmpegWASM.FFmpeg) {
-    throw new Error('FFmpeg SDK 加载后未挂到 window.FFmpegWASM,可能版本不兼容');
-  }
+  // 2) ESM 导入 util (含 fetchFile/toBlobURL)
+  const utilMod = await _importEsmFromCdn(FFMPEG_UTIL_ESM);
+  // 暴露到 window,方便后续直接用
+  window.FFmpegUtil = utilMod;
 
   if (progressLabel) progressLabel.textContent = '下载 FFmpeg core 引擎(约 30MB,仅首次)…';
 
-  const { FFmpeg } = window.FFmpegWASM;
+  const FFmpeg = ffmpegMod.FFmpeg;
   const ffmpeg = new FFmpeg();
   ffmpeg.on('log', ({ message }) => { /* console.debug('[ffmpeg]', message); */ });
 
