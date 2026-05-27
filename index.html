@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 关闭 Cloudflare 邮件混淆:防止 [email protected] 这种字符串被改成 [email protected]
+     这个 meta 必须放在 head 里靠前位置才生效 -->
+<meta name="cf-2fa-verify" content="off">
+<meta name="format-detection" content="email=no">
 <title>VidScore · 工业视频质检平台</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet" crossorigin="anonymous">
 <style>
@@ -2508,9 +2512,21 @@ function trimReset() {
 // ── ffmpeg.wasm 加载与执行 ──
 // 用 jsDelivr(它发 Cross-Origin-Resource-Policy: cross-origin,能配合 COEP)
 // 而不是 unpkg(被 COEP 拦截)
-const FFMPEG_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd';
-const FFMPEG_UTIL_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd';
-const FFMPEG_CORE_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd';
+//
+// ⚠️ 重要:这里用模板字符串拼接,绝对不能写成完整的 'name@version' 字面量!
+// 因为 Vercel/Cloudflare 的 Email Obfuscation 会把任何 "xxx@yyy" 形式的
+// 字符串当邮箱混淆成 "[email protected]",导致 URL 变成
+// "/@ffmpeg/[email%20protected]" 而 404
+const _PKG_FF = '@ffmpeg' + '/' + 'ffmpeg';
+const _PKG_FU = '@ffmpeg' + '/' + 'util';
+const _PKG_FC = '@ffmpeg' + '/' + 'core';
+const _VER_FF = '0.12.10';
+const _VER_FU = '0.12.10';
+const _VER_FC = '0.12.6';
+const _CDN = 'https://cdn.jsdelivr.net/npm/';
+const FFMPEG_BASE = _CDN + _PKG_FF + '@' + _VER_FF + '/dist/umd';
+const FFMPEG_UTIL_BASE = _CDN + _PKG_FU + '@' + _VER_FU + '/dist/umd';
+const FFMPEG_CORE_BASE = _CDN + _PKG_FC + '@' + _VER_FC + '/dist/umd';
 
 // 通用工具:fetch 任意 URL,转成 same-origin 的 blob URL,从而绕过 COEP
 async function _toBlobUrl(url, mime) {
