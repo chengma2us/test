@@ -677,18 +677,13 @@
     <div class="config-panel" id="configPanel">
       <h3>质检标准</h3>
       <p class="sub">
-        <strong style="color:var(--danger)">REJECT</strong> = 整段视频拒收（仅限儿童出镜） ·
-        <strong style="color:var(--warn)">DROP</strong> = 该片段丢弃，剩余部分按可用率打分
+        <strong style="color:var(--warn)">DROP</strong> = 该片段丢弃,剩余部分按可用率打分
       </p>
 
       <div class="check-grid">
-        <div class="check-item fatal">
-          <div class="check-name">🚫 出现儿童<span class="weight-tag">REJECT</span></div>
-          <div class="check-desc">检测到未成年人，整段拒收（隐私零容忍）</div>
-        </div>
         <div class="check-item drop">
-          <div class="check-name">👤 出现成人脸部<span class="weight-tag">DROP</span></div>
-          <div class="check-desc">画面中可识别成人面部，该片段丢弃</div>
+          <div class="check-name">👤 出现人脸<span class="weight-tag">DROP</span></div>
+          <div class="check-desc">画面中可识别面部,该片段丢弃</div>
         </div>
         <div class="check-item drop">
           <div class="check-name">✋ 少于 2 只手<span class="weight-tag">DROP</span></div>
@@ -865,14 +860,8 @@ function normalizeIssues(rawIssues, totalDur) {
       newFatal = false;
       newSev = 'warn';
     }
-    // 出现儿童 → 保留 REJECT
-    else if (/儿童|未成年|child|minor/i.test(name)) {
-      newName = '出现儿童';
-      newFatal = true;
-      newSev = 'danger';
-    }
-    // 出现人脸(成人) → 改为 DROP
-    else if (/人脸|脸部|face|PII/i.test(name)) {
+    // 出现人脸 → DROP (后端 mediapipe 无法区分成人/儿童,统一当 DROP 处理)
+    else if (/人脸|脸部|face|PII|儿童|未成年|child|minor/i.test(name)) {
       newName = '出现成人脸部';
       newFatal = false;
       newSev = 'warn';
