@@ -1326,9 +1326,56 @@ function uploadFormDataWithProgress(url, formData, onProgress) {
     };
     xhr.onerror = () => reject(new Error('网络错误(可能超时或连接中断)'));
     xhr.ontimeout = () => reject(new Error('请求超时'));
-    xhr.timeout = 15 * 60 * 1000;  // 15 分钟,大文件 + 后端分析时间
+    xhr.timeout = 10 * 60 * 1000;  // 10 分钟上传超时(分析现在异步,不在此 XHR 里)
     xhr.send(formData);
   });
+}
+
+// 轮询 Modal 异步任务结果, 直到完成或超时(30 分钟)
+// onWaiting(elapsedSec) 每次轮询调用,前端可显示等待时长
+async function pollForResult(taskId, onWaiting) {
+  const RESULT_URL = MODAL_API.replace(/\/analyze$/, '/result/');
+  const POLL_INTERVAL_MS = 3000;        // 每 3 秒查一次
+  const MAX_WAIT_MS = 30 * 60 * 1000;   // 最多等 30 分钟
+  const startTime = Date.now();
+
+  while (true) {
+    const elapsed = Date.now() - startTime;
+    if (elapsed > MAX_WAIT_MS) {
+      throw new Error('分析超时(超过 30 分钟)。视频可能过大或服务繁忙。');
+    }
+    if (onWaiting) onWaiting(Math.floor(elapsed / 1000));
+
+    // 等一会再查(首次也等,因为 spawn 后立即查通常都是 running)
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+    try {
+      const resp = await fetch(RESULT_URL + encodeURIComponent(taskId), {
+        method: 'GET',
+        // 不需要 credentials, Modal CORS 已配
+      });
+      if (!resp.ok) {
+        // 410 = 结果过期; 500 = 内部错误
+        if (resp.status === 410) throw new Error('任务结果已过期, 请重新分析');
+        // 其他错误继续轮询(可能是临时网络抖动)
+        console.warn('轮询返回', resp.status, ', 继续等待');
+        continue;
+      }
+      const data = await resp.json();
+      if (data.status === 'done') {
+        return data.result;
+      } else if (data.status === 'error') {
+        throw new Error('分析失败: ' + (data.message || '未知错误'));
+      }
+      // status === 'running' → 继续轮询
+    } catch(err) {
+      // 网络抖动忽略, 但真错误(如 throw 出来的)往上抛
+      if (err.message && (err.message.includes('过期') || err.message.includes('分析失败') || err.message.includes('分析超时'))) {
+        throw err;
+      }
+      console.warn('轮询临时错误, 继续重试:', err.message);
+    }
+  }
 }
 
 async function analyzeOne(queueItem) {
@@ -1412,18 +1459,37 @@ async function analyzeOne(queueItem) {
     formData.append('file', uploadFile, uploadFile.name);
     formData.append('min_hands', MIN_HANDS.toString());
 
-    const result = await uploadFormDataWithProgress(MODAL_API, formData, (p) => {
+    // ── 上传阶段: 拿到 task_id (不等分析) ──
+    const uploadResp = await uploadFormDataWithProgress(MODAL_API, formData, (p) => {
       queueItem.uploadPct = p;
       renderQueueList();
-      bar.style.width = (50 + p * 0.45) + '%';
+      bar.style.width = (50 + p * 0.4) + '%';
       pct.textContent = `上传 ${p.toFixed(0)}%`;
       sub.textContent = `上传 ${uploadFile.name}…`;
     });
 
-    // ── 阶段 3:服务器返回,显示分析中(已经分析完了,只是 UI 表示) ──
+    if (!uploadResp || !uploadResp.task_id) {
+      throw new Error('服务器未返回 task_id: ' + JSON.stringify(uploadResp).slice(0, 200));
+    }
+
+    // ── 阶段 3: 等服务器分析(异步轮询) ──
     queueItem.phase = 'analyze';
     queueItem.uploadPct = 100;
     renderQueueList();
+    bar.style.width = '92%';
+    pct.textContent = '分析中…';
+
+    const result = await pollForResult(uploadResp.task_id, (elapsedSec) => {
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
+      const elapsedStr = m > 0 ? `${m}分${s}秒` : `${s}秒`;
+      sub.textContent = `服务器分析中…(已等 ${elapsedStr})`;
+      // 进度条在 92-99% 之间慢慢爬,给用户感觉
+      const fakeProgress = Math.min(99, 92 + Math.min(elapsedSec / 60, 7));
+      bar.style.width = fakeProgress + '%';
+    });
+
+    // ── 阶段 4: 收到结果 ──
     bar.style.width = '100%';
     pct.textContent = '100%';
     sub.textContent = `${originalFile.name} 完成`;
