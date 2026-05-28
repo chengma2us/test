@@ -212,7 +212,7 @@
   .overlay-tag {
     padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
     font-family: var(--sans); backdrop-filter: blur(8px);
-    animation: fadeIn 0.2s ease;
+    animation: fadeIn 0.35s ease;
     display: inline-flex; align-items: center; gap: 6px;
   }
   .overlay-tag.danger { background: rgba(255,77,109,0.9); color: #fff; }
@@ -2830,6 +2830,8 @@ function setupVideoOverlay(v) {
   if (vid._overlayHandler) {
     vid.removeEventListener('timeupdate', vid._overlayHandler);
   }
+  // 记录上一次的 overlay 内容签名,避免每帧重新写 innerHTML 导致 CSS 动画重放(闪烁)
+  let lastSig = null;
   vid._overlayHandler = () => {
     const t = vid.currentTime;
     const active = [];
@@ -2837,6 +2839,10 @@ function setupVideoOverlay(v) {
       const inSeg = (iss.segments || []).some(([s, e]) => t >= s && t <= e);
       if (inSeg) active.push(iss);
     });
+    // 算签名: 用 issue id 拼起来,内容变了才更新
+    const sig = active.map(iss => iss.id || iss.name).sort().join('|');
+    if (sig === lastSig) return;  // 没变化,不动 DOM
+    lastSig = sig;
     overlay.innerHTML = active.length === 0 ? '' : active.map(iss => {
       const pill = iss.fatal ? 'REJECT' : 'DROP';
       return `<span class="overlay-tag ${iss.severity}"><span class="drop-pill">${pill}</span> ${iss.name}</span>`;
